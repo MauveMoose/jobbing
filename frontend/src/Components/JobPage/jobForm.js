@@ -1,0 +1,123 @@
+import {useState} from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+
+function JobForm(){
+    const user = useSelector((state)=>state.user.user);
+    const navigate = useNavigate();
+    const [formData, setFormData] = useState({
+        title:"",
+        company:"",
+        salary:0,
+        description:"",
+        yoeNeeded:0,
+        benefits:[""],
+        skillsNeeded:[""],
+        recruiter: user?.name || "Jobbing",
+        applications:[""]
+    })
+
+    const handleChange = (e) => {
+        setFormData({...formData, [e.target.name]:e.target.value})
+    }
+
+    const handleArrayChange = (index, value, key) => {
+        setFormData((previousFormData) => ({
+            ...previousFormData,
+            [key]: previousFormData[key].map((item, i)=>
+                (i === index ? value:item)
+            ),
+        }))
+    }
+
+    const addArrayItem = (key) => {
+        setFormData((previousFormData) => ({
+            ...previousFormData, 
+            [key]: [...previousFormData[key], ""],
+        }))
+    }
+
+    const removeArrayItem = (key, index) => {
+        setFormData((previousFormData) => ({
+            ...previousFormData, 
+            [key]: previousFormData[key].filter((_, i) => i !== index),
+        }))
+    }
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        const errors = [];
+        if (!formData.title || !formData.title.trim()) errors.push("Job Title is missing");
+        if (!formData.company || !formData.company.trim()) errors.push("Company Name is missing");
+        if (formData.salary === "" || formData.salary === null || Number(formData.salary) <= 0) {
+            errors.push("Salary is required and must be greater than 0");
+        }
+        if (formData.yoeNeeded === "" || formData.yoeNeeded === null || Number(formData.yoeNeeded) < 0) {
+            errors.push("Years of Experience Needed is required (0 or higher)");
+        }
+        if (!formData.description || !formData.description.trim()) errors.push("Job Description is missing");
+
+        if (errors.length > 0) {
+            return alert("Please fix the following issue(s) before submitting:\n\n• " + errors.join("\n• "));
+        }
+
+        const dataToSend = {
+            ...formData,
+            title: formData.title.trim(),
+            company: formData.company.trim(),
+            salary: Number(formData.salary) || 0,
+            yoeNeeded: Number(formData.yoeNeeded) || 0,
+            benefits: formData.benefits.filter(b => b.trim() !== ""),
+            skillsNeeded: formData.skillsNeeded.filter(s => s.trim() !== ""),
+            recruiterId: user?._id,
+            recruiterName: user?.name || "Jobbing",
+            recruiter: user?.name || "Jobbing"
+        }
+
+        const res = await fetch("http://localhost:5000/job/register", {
+            method:  "POST",
+            headers: {"Content-Type":"application/json"},
+            body:JSON.stringify(dataToSend),
+        });
+        
+        if(res.ok){
+            alert("Job successfully registered! We'll begin recommending it to applicants right away");
+            navigate("/profile/recruiters");
+        }
+        else{
+            const data = await res.json();
+            alert(data.message || "Failed to post job");
+        }
+    }
+
+    return(
+        <form onSubmit={handleSubmit} noValidate>
+            Title: <input type="text" name="title" value={formData.title} onChange={handleChange} required /> <br />
+            Company: <input type="text" name="company" value={formData.company} onChange={handleChange} required /> <br />
+            Salary: <input type="number" name="salary" value={formData.salary} onChange={handleChange} required /> <br />
+            Years of Experience needed: <input type="number" name="yoeNeeded" value={formData.yoeNeeded} onChange={handleChange} required /> <br />
+            Description:
+            <textarea name="description" placeholder='Description...' value={formData.description} onChange={handleChange} required /> <br />
+            Benefits:
+            {formData.benefits.map((benefit, i) => (
+                <div key={i} className='Entry-field'>
+                    <input type="text" placeholder='Benefit' value={benefit} onChange={(e)=>handleArrayChange(i, e.target.value, "benefits")} /> <br />
+                    <button className="Button" type="button" onClick={()=>removeArrayItem("benefits", i)}> Remove Benefit </button> <br />
+                </div>
+            ))}
+            <button className="Button" type="button" onClick={()=>addArrayItem("benefits")}> Add Benefit </button> <br />
+            Skills Needed:
+            {formData.skillsNeeded.map((skill, i) => (
+                <div key={i} className='Entry-field'>
+                    <input type="text" placeholder='Benefit' value={skill} onChange={(e)=>handleArrayChange(i, e.target.value, "skillsNeeded")} /> <br />
+                    <button className="Button" type="button" onClick={()=>removeArrayItem("skillsNeeded", i)}> Remove Benefit </button> <br />
+                </div>
+            ))}
+            <button className="Button" type="button" onClick={()=>addArrayItem("skillsNeeded")}> Add Benefit </button> <br />
+            <button className="Button" type="submit"> Submit </button>
+        </form>
+    )
+}
+
+export default JobForm;
