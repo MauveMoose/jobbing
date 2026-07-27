@@ -4,9 +4,6 @@ import { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { Navigate } from "react-router-dom";
 
-/*USE A USE REFERENCE ON THE LOGIN PAGE TO STORE A REFERENCE TO THE
-CURRENT USER. THEN, SIMPLY EXTRACT THE CURRENT USER'S DATA WHENEVER NEEDED
-*/
 function WelcomePageApplicant(){
     const user = useSelector((state)=>state.user.user);
     const [jobs, setJobs] = useState([]);
@@ -19,7 +16,7 @@ function WelcomePageApplicant(){
                 const res = await fetch("http://localhost:5000/search", {
                     method:"POST",
                     headers:{"Content-Type":"application/json",},
-                    body:JSON.stringify({yoe: user.yoe || 0}),
+                    body:JSON.stringify({yoe: user.yoe || 0, applicantId: user._id}),
                 });
                 const jobsData = await res.json();
                 if(res.ok){
@@ -50,7 +47,6 @@ function WelcomePageApplicant(){
         )
     }
 
-
     return(
     <div className='Backlayer'>
         <PageHeader />
@@ -68,7 +64,10 @@ function WelcomePageApplicant(){
                 recruiter={job.recruiter}
                 yoeNeeded={job.yoeNeeded}
                 salary={job.salary}
-                benefits={job.benefits || []} />
+                benefits={job.benefits || []}
+                jobImage={job.jobImage}
+                matchPercentage={job.matchPercentage}
+                hasApplied={job.hasApplied} />
             ))}
         </div>
     </div>

@@ -1,30 +1,28 @@
 import express from 'express';
 import dotenv from "dotenv";
 import fs from 'fs';
-import OpenAI from 'openai';
 import cors from 'cors';
+import crypto from 'crypto';
 import { MongoClient, ObjectId } from 'mongodb';
 import multer from 'multer';
 import { PDFParse } from 'pdf-parse';
-import nodemailer from 'nodemailer';
+import { extractSkillTags, extractJobSkillTags, parseResumeWithAI } from './services/aiService.js';
+import { sendRecruiterNotificationEmail, sendVerificationEmail } from './services/emailService.js';
+import { rankApplicantsForRecruiter, rankJobsForApplicant } from './services/recommendationService.js';
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cors());
 
 dotenv.config(); // Loads in the API key from the .env file
-const api_key = process.env.OPENAI_KEY;
 const connectionstring = process.env.MONGO_URL;
 
 const c = new MongoClient(connectionstring);
 
 let db;
-
-const openai = new OpenAI({
-    apiKey: api_key,
-});
 
 async function ConnectDB() {
     await c.connect();
@@ -32,39 +30,13 @@ async function ConnectDB() {
     console.log("Database successfully connected");
 }
 
-const createTransporter = async () => {
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-        return nodemailer.createTransport({
-            service: process.env.EMAIL_SERVICE || 'gmail',
-            host: process.env.SMTP_HOST,
-            port: Number(process.env.SMTP_PORT) || 587,
-            secure: process.env.SMTP_SECURE === 'true',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS,
-            },
-        });
-    }
-
-    const testAccount = await nodemailer.createTestAccount();
-    return nodemailer.createTransport({
-        host: 'smtp.ethereal.email',
-        port: 587,
-        secure: false,
-        auth: {
-            user: testAccount.user,
-            pass: testAccount.pass,
-        },
-    });
-};
-
 app.post('/upload-resume', upload.single('resume'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ message: "No file uploaded" });
         }
         const filePath = req.file.path;
-        const dataBuffer = fs.readFileSync(filePath);
+        const dataBuffer = await fs.promises.readFile(filePath);
         
         // Use PDFParse class from pdf-parse v2
         const parser = new PDFParse({ data: dataBuffer });
@@ -72,60 +44,12 @@ app.post('/upload-resume', upload.single('resume'), async (req, res) => {
         const pdfText = textResult.text;
         await parser.destroy();
 
-        const prompt = `
-You are a resume parser. Given the plain text of a resume, extract the following fields and return them as a valid JSON object in this exact structure. Do not include any explanation or extra text. Only return the JSON object.
-Format:
-{
-  "name": "Full Name",
-  "age": 25,
-  "yoe": 3,
-  "tenth_school": "Name of high school for 10th grade",
-  "tenth_result": "10th grade score or percentage",
-  "twelfth_school": "Name of high school for 12th grade",
-  "twelfth_result": "12th grade score or percentage",
-  "bachelors_school": "Name of college/university",
-  "bachelors_course": "Course/Degree taken",
-  "bachelors_result": "GPA or percentage",
-  "work": [
-    {
-      "company": "Company name",
-      "description": "Short description of job responsibilities or achievements"
-    }
-  ],
-  "projects": [
-    {
-      "name": "Project title",
-      "description": "Short summary of the project and its goals/tech"
-    }
-  ]
-}
+        const extractedDetails = await parseResumeWithAI(pdfText);
 
-If any field is missing in the resume, set its value to null (not "N/A", not empty string).
-
-Here is the resume text:
-${pdfText}
-`;
-
-        const gptresponse = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [{ role: "user", content: prompt }],
-            response_format: { type: "json_object" }
-        });
-
-        let extractedDetails;
         try {
-            let rawContent = gptresponse.choices[0].message.content.trim();
-            if (rawContent.startsWith("```")) {
-                rawContent = rawContent.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
-            }
-            extractedDetails = JSON.parse(rawContent);
-        } catch (err) {
-            extractedDetails = { rawText: gptresponse.choices[0].message.content };
-        }
+            await fs.promises.unlink(filePath);
+        } catch (e) {}
 
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
         res.json(extractedDetails);
     } catch (err) {
         console.log(err);
@@ -140,32 +64,79 @@ function isValidEmail(email) {
     return emailRegex.test(trimmed);
 }
 
+app.get("/verify-email", async (req, res) => {
+    try {
+        const { token, collection } = req.query;
+        if (!token) {
+            return res.status(400).send("<h2>Invalid Link</h2><p>No token provided.</p>");
+        }
+
+        const targetColl = collection || "applicants";
+        let activecoll = db.collection(targetColl);
+        let user = await activecoll.findOne({ verificationToken: token });
+
+        if (!user) {
+            const altColl = targetColl === "applicants" ? "recruiters" : "applicants";
+            activecoll = db.collection(altColl);
+            user = await activecoll.findOne({ verificationToken: token });
+        }
+
+        if (!user) {
+            return res.status(400).send(`
+                <div style="font-family: Arial, sans-serif; text-align: center; margin-top: 50px;">
+                    <h1 style="color: #f44336;">Invalid or Expired Verification Link</h1>
+                    <p>This verification link is invalid or your account is already verified.</p>
+                    <a href="http://localhost:3000/login" style="background-color: #555; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Login</a>
+                </div>
+            `);
+        }
+
+        await activecoll.updateOne(
+            { _id: user._id },
+            { $set: { isVerified: true }, $unset: { verificationToken: "" } }
+        );
+
+        return res.send(`
+            <div style="font-family: Arial, sans-serif; text-align: center; margin-top: 50px;">
+                <h1 style="color: #4CAF50;">✓ Email Successfully Verified!</h1>
+                <p style="font-size: 18px; color: #333;">Your account (${user.email}) has been activated.</p>
+                <p><a href="http://localhost:3000/login" style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Log In Now</a></p>
+            </div>
+        `);
+    } catch (err) {
+        console.log(err);
+        return res.status(500).send("<h2>Server Error</h2><p>Failed to verify email.</p>");
+    }
+});
+
 app.post("/:collection/login", async (req, res) => {
     try {
         const coll = req.params.collection;
         const activecollection = db.collection(coll);
         const { email, password } = req.body;
+        const cleanEmail = (email || "").trim().toLowerCase();
+        
+        const entry = await activecollection.findOne({ email: cleanEmail });
 
-        if (!isValidEmail(email)) {
-            return res.status(400).json({ message: "Please provide a valid @somaiya.edu email address." });
-        }
-        if (!password || typeof password !== 'string' || !password.trim()) {
-            return res.status(400).json({ message: "Password is required." });
+        if (!entry) {
+            return res.status(404).json({ message: "No user found with that email." });
         }
 
-        const cleanEmail = email.trim().toLowerCase();
-        const currentuser = await activecollection.findOne({ email: cleanEmail, password });
-        if (!currentuser) {
-            return res.status(401).json({ message: "User not found or incorrect credentials. Please try again." });
-        } else {
-            return res.status(200).json({
-                message: `Welcome to Jobbing, ${currentuser.name}!`,
-                user: currentuser
-            });
+        if (entry.password !== password) {
+            return res.status(401).json({ message: "Incorrect password." });
         }
+
+        if (entry.isVerified === false) {
+            return res.status(403).json({ message: "Please verify your email address before logging in. Check your inbox for the verification link!" });
+        }
+
+        return res.status(200).json({
+            message: "Success",
+            data: entry
+        });
     } catch (err) {
         console.log(err);
-        return res.status(500).json({ error: "Failed to access database!" });
+        return res.status(500).json({ message: "Login failed." });
     }
 });
 
@@ -221,6 +192,202 @@ app.delete("/job/:id", async (req, res) => {
     } catch (err) {
         console.log(err);
         return res.status(500).json({ message: "Failed to delete job posting" });
+    }
+});
+
+app.delete("/applicants/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid applicant ID format" });
+        }
+
+        const applicantsColl = db.collection("applicants");
+        const existingApplicant = await applicantsColl.findOne({ _id: new ObjectId(id) });
+
+        if (!existingApplicant) {
+            return res.status(404).json({ message: "Applicant profile not found" });
+        }
+
+        await applicantsColl.deleteOne({ _id: new ObjectId(id) });
+        return res.status(200).json({ message: "Applicant profile deleted successfully" });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "Failed to delete applicant profile" });
+    }
+});
+
+app.delete("/recruiters/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid recruiter ID format" });
+        }
+
+        const recruitersColl = db.collection("recruiters");
+        const jobColl = db.collection("job");
+
+        const existingRecruiter = await recruitersColl.findOne({ _id: new ObjectId(id) });
+        if (!existingRecruiter) {
+            return res.status(404).json({ message: "Recruiter profile not found" });
+        }
+
+        const activeJobs = await jobColl.find({
+            $or: [
+                { recruiterId: id },
+                { recruiterId: new ObjectId(id) }
+            ]
+        }).toArray();
+
+        if (activeJobs && activeJobs.length > 0) {
+            return res.status(400).json({
+                message: `Cannot delete recruiter profile while active job postings still exist (${activeJobs.length} active job(s) found). Please delete all your job listings first.`
+            });
+        }
+
+        await recruitersColl.deleteOne({ _id: new ObjectId(id) });
+        return res.status(200).json({ message: "Recruiter profile deleted successfully" });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "Failed to delete recruiter profile" });
+    }
+});
+
+app.put("/applicants/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid applicant ID format" });
+        }
+
+        const applicantsColl = db.collection("applicants");
+        const existingApplicant = await applicantsColl.findOne({ _id: new ObjectId(id) });
+        if (!existingApplicant) {
+            return res.status(404).json({ message: "Applicant profile not found" });
+        }
+
+        const { age, yoe, work, projects } = req.body;
+        const updatedFields = {};
+
+        if (age !== undefined) {
+            const ageNum = Number(age);
+            if (isNaN(ageNum) || ageNum < 18) {
+                return res.status(400).json({ message: "Age must be 18 or higher." });
+            }
+            updatedFields.age = ageNum;
+        }
+
+        if (yoe !== undefined) {
+            const yoeNum = Number(yoe);
+            const currentAge = updatedFields.age !== undefined ? updatedFields.age : (existingApplicant.age || 0);
+            if (isNaN(yoeNum) || yoeNum < 0) {
+                return res.status(400).json({ message: "Years of Experience must be 0 or higher." });
+            }
+            if (yoeNum > currentAge) {
+                return res.status(400).json({ message: "Years of Experience cannot be greater than Age." });
+            }
+            updatedFields.yoe = yoeNum;
+        }
+
+        if (work !== undefined && Array.isArray(work)) {
+            updatedFields.work = work;
+        }
+
+        if (projects !== undefined && Array.isArray(projects)) {
+            updatedFields.projects = projects;
+        }
+
+        if (req.body.profilePic !== undefined) {
+            updatedFields.profilePic = req.body.profilePic;
+        }
+
+        if (work !== undefined || projects !== undefined) {
+            const currentWork = updatedFields.work || existingApplicant.work || [];
+            const currentProjects = updatedFields.projects || existingApplicant.projects || [];
+            const textToTag = `${existingApplicant.name || ''} ${currentWork.map(w => (w.company || '') + ' ' + (w.description || '')).join(' ')} ${currentProjects.map(p => (p.name || p.title || '') + ' ' + (p.description || '')).join(' ')}`;
+            updatedFields.tags = await extractSkillTags(textToTag);
+        }
+
+        await applicantsColl.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: updatedFields }
+        );
+
+        const updatedApplicant = await applicantsColl.findOne({ _id: new ObjectId(id) });
+        return res.status(200).json({
+            message: "Profile updated successfully!",
+            user: updatedApplicant
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "Failed to update profile" });
+    }
+});
+
+app.put("/recruiters/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid recruiter ID format" });
+        }
+
+        const recruitersColl = db.collection("recruiters");
+        const existingRecruiter = await recruitersColl.findOne({ _id: new ObjectId(id) });
+        if (!existingRecruiter) {
+            return res.status(404).json({ message: "Recruiter profile not found" });
+        }
+
+        const { profilePic } = req.body;
+        const updatedFields = {};
+
+        if (profilePic !== undefined) {
+            updatedFields.profilePic = profilePic;
+        }
+
+        await recruitersColl.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: updatedFields }
+        );
+
+        const updatedRecruiter = await recruitersColl.findOne({ _id: new ObjectId(id) });
+        return res.status(200).json({
+            message: "Recruiter profile updated successfully!",
+            user: updatedRecruiter
+        });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "Failed to update recruiter profile" });
+    }
+});
+
+app.put("/job/:id", async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid job ID format" });
+        }
+
+        const jobColl = db.collection("job");
+        const existingJob = await jobColl.findOne({ _id: new ObjectId(id) });
+        if (!existingJob) {
+            return res.status(404).json({ message: "Job listing not found" });
+        }
+
+        const { jobImage, recruiterId } = req.body;
+
+        if (recruiterId && existingJob.recruiterId && existingJob.recruiterId.toString() !== recruiterId.toString()) {
+            return res.status(403).json({ message: "You are not authorized to update this job listing" });
+        }
+
+        await jobColl.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { jobImage: jobImage } }
+        );
+
+        return res.status(200).json({ message: "Job image updated successfully!" });
+    } catch (err) {
+        console.log(err);
+        return res.status(500).json({ message: "Failed to update job image" });
     }
 });
 
@@ -280,6 +447,19 @@ app.post("/apply", async (req, res) => {
         const jobColl = db.collection("job");
         const recruitersColl = db.collection("recruiters");
 
+        const existingApplicant = await applicantsColl.findOne({ _id: new ObjectId(userId) });
+        if (!existingApplicant) {
+            return res.status(404).json({ message: "Applicant profile not found" });
+        }
+
+        const alreadyApplied = (existingApplicant.applications || []).some(
+            app => (app.id || app.jobId)?.toString() === jobId.toString()
+        );
+
+        if (alreadyApplied) {
+            return res.status(409).json({ message: "You have already applied for this job." });
+        }
+
         // 1. Save application to applicant's profile
         await applicantsColl.updateOne(
             { _id: new ObjectId(userId) },
@@ -301,39 +481,21 @@ app.post("/apply", async (req, res) => {
             }
         }
 
-        // 3. Send email to recruiter if linked
+        // 3. Send email to recruiter via emailService module
         if (recruiterEmail) {
             try {
-                const transporter = await createTransporter();
-                const mailOptions = {
-                    from: `"Jobbing System" <${process.env.EMAIL_USER || 'no-reply@jobbing.com'}>`,
-                    to: recruiterEmail,
-                    subject: `New Job Application: ${title} from ${applicantObj?.name || 'an Applicant'}`,
-                    text: `Hello ${recruiterName},
-
-You have received a new application for your job opening: "${title}".
-
-Applicant Details:
-------------------
-Name: ${applicantObj?.name || 'N/A'}
-Email: ${applicantObj?.email || 'N/A'}
-Age: ${applicantObj?.age || 'N/A'}
-Years of Experience: ${applicantObj?.yoe || 0}
-10th Grade: ${applicantObj?.tenth_school || 'N/A'} (${applicantObj?.tenth_result || 'N/A'})
-12th Grade: ${applicantObj?.twelfth_school || 'N/A'} (${applicantObj?.twelfth_result || 'N/A'})
-Bachelor's: ${applicantObj?.bachelors_course || 'N/A'} - ${applicantObj?.bachelors_school || 'N/A'} (${applicantObj?.bachelors_result || 'N/A'})
-
-Please log in to your Jobbing recruiter account to view their full profile.
-
-Best regards,
-The Jobbing Team`,
-                };
-
-                const info = await transporter.sendMail(mailOptions);
-                console.log(`[Email Sent] Recruiter notified (${recruiterEmail}). Message ID: ${info.messageId}`);
-                if (nodemailer.getTestMessageUrl(info)) {
-                    console.log(`[Ethereal Test Preview URL]: ${nodemailer.getTestMessageUrl(info)}`);
-                }
+                await sendRecruiterNotificationEmail({
+                    recruiterEmail,
+                    recruiterName,
+                    applicantName: applicantObj?.name || 'Applicant',
+                    applicantEmail: applicantObj?.email || 'N/A',
+                    applicantAge: applicantObj?.age || 'N/A',
+                    applicantYoe: applicantObj?.yoe || 0,
+                    jobTitle: title,
+                    work: applicantObj?.work || [],
+                    projects: applicantObj?.projects || []
+                });
+                console.log(`[Email Sent] Recruiter notified (${recruiterEmail}).`);
             } catch (emailErr) {
                 console.error("Error sending application email to recruiter:", emailErr);
             }
@@ -379,6 +541,8 @@ app.post("/:collection/register", async (req, res) => {
                 return res.status(409).json({ message: "That email is already registered." });
             }
 
+            const verificationToken = crypto.randomBytes(32).toString('hex');
+
             if (coll === "applicants") {
                 const ageNum = Number(req.body.age) || 0;
                 const yoeNum = Number(req.body.yoe) || 0;
@@ -388,15 +552,26 @@ app.post("/:collection/register", async (req, res) => {
                 if (yoeNum > ageNum) {
                     return res.status(400).json({ message: "Years of experience cannot be greater than age." });
                 }
+
+                let tags = req.body.tags;
+                if (!tags || !Array.isArray(tags) || tags.length === 0) {
+                    const textToTag = `${name} ${(req.body.work || []).map(w => w.company + ' ' + w.description).join(' ')} ${(req.body.projects || []).map(p => p.name + ' ' + p.description).join(' ')}`;
+                    tags = await extractSkillTags(textToTag);
+                }
+
                 data = {
                     ...req.body,
                     name: name.trim(),
                     email: cleanEmail,
                     age: ageNum,
                     yoe: yoeNum,
+                    profilePic: req.body.profilePic || null,
                     work: req.body.work || [],
                     projects: req.body.projects || [],
-                    applications: req.body.applications || []
+                    applications: req.body.applications || [],
+                    tags: tags,
+                    isVerified: false,
+                    verificationToken: verificationToken
                 };
             } else {
                 data = {
@@ -404,9 +579,27 @@ app.post("/:collection/register", async (req, res) => {
                     name: name.trim(),
                     email: cleanEmail,
                     company: req.body.company.trim(),
-                    positions: req.body.positions || []
+                    positions: req.body.positions || [],
+                    isVerified: false,
+                    verificationToken: verificationToken
                 };
             }
+
+            await activecollection.insertOne(data);
+            console.log(`[Registration] New ${coll} account registered (${cleanEmail}). Sending verification email...`);
+
+            try {
+                await sendVerificationEmail({
+                    email: cleanEmail,
+                    name: name.trim(),
+                    collection: coll,
+                    verificationToken: verificationToken
+                });
+            } catch (emailErr) {
+                console.error("Error sending verification email:", emailErr);
+            }
+
+            return res.status(201).json({ message: "Registration successful! A verification link has been sent to your email address. Please verify your email before logging in." });
         }
 
         if (coll === "job") {
@@ -419,7 +612,19 @@ app.post("/:collection/register", async (req, res) => {
             }
 
             const jtitle = title.trim();
+            const cleanCompany = company.trim();
             const salaryNum = Number(salary) || 0;
+
+            if (req.body.recruiterId) {
+                const existingJob = await activecollection.findOne({
+                    title: jtitle,
+                    company: cleanCompany,
+                    recruiterId: req.body.recruiterId
+                });
+                if (existingJob) {
+                    return res.status(409).json({ message: "A job listing with this title already exists in your profile." });
+                }
+            }
 
             let recruiterName = "Jobbing";
             if (req.body.recruiterId && ObjectId.isValid(req.body.recruiterId)) {
@@ -439,6 +644,11 @@ app.post("/:collection/register", async (req, res) => {
                 recruiterName = req.body.recruiterName.trim();
             }
 
+            let tags = req.body.tags;
+            if (!tags || !Array.isArray(tags) || tags.length === 0) {
+                tags = await extractJobSkillTags(jtitle, req.body.description, req.body.skillsNeeded);
+            }
+
             data = {
                 ...req.body,
                 title: jtitle,
@@ -446,13 +656,14 @@ app.post("/:collection/register", async (req, res) => {
                 yoeNeeded: Number(req.body.yoeNeeded) || 0,
                 salary: salaryNum,
                 recruiterName: recruiterName,
-                recruiter: recruiterName
+                recruiter: recruiterName,
+                tags: tags
             };
-        }
 
-        await activecollection.insertOne(data);
-        console.log("Insertion successful");
-        return res.status(201).json({ message: "Registered successfully" });
+            await activecollection.insertOne(data);
+            console.log("Insertion successful");
+            return res.status(201).json({ message: "Registered successfully" });
+        }
     } catch (err) {
         console.log(err);
         return res.status(500).json({ error: "Failed to insert" });
@@ -462,12 +673,12 @@ app.post("/:collection/register", async (req, res) => {
 app.post("/search", async (req, res) => {
     try {
         const activecollection = db.collection("job");
-        const { yoe } = req.body;
+        const { yoe, applicantId } = req.body;
         const yoeNum = Number(yoe) || 0;
         const jobs = await activecollection.find({ yoeNeeded: { $lte: yoeNum } }).toArray();
 
         const recruiterColl = db.collection("recruiters");
-        const formattedJobs = await Promise.all(jobs.map(async (job) => {
+        let formattedJobs = await Promise.all(jobs.map(async (job) => {
             let realRecruiterName = "Jobbing";
             if (job.recruiterId && ObjectId.isValid(job.recruiterId)) {
                 const recObj = await recruiterColl.findOne({ _id: new ObjectId(job.recruiterId) });
@@ -491,6 +702,14 @@ app.post("/search", async (req, res) => {
             };
         }));
 
+        if (applicantId && ObjectId.isValid(applicantId)) {
+            const applicantsColl = db.collection("applicants");
+            const applicantObj = await applicantsColl.findOne({ _id: new ObjectId(applicantId) });
+            if (applicantObj) {
+                formattedJobs = rankJobsForApplicant({ jobs: formattedJobs, applicant: applicantObj });
+            }
+        }
+
         return res.status(200).json({
             message: "Jobs found",
             data: formattedJobs
@@ -503,8 +722,19 @@ app.post("/search", async (req, res) => {
 
 app.get("/findusers", async (req, res) => {
     try {
+        const recruiterId = req.query.recruiterId;
         const activecollection = db.collection("applicants");
-        const applicants = await activecollection.find().toArray();
+        let applicants = await activecollection.find().toArray();
+
+        if (recruiterId && ObjectId.isValid(recruiterId)) {
+            const jobColl = db.collection("job");
+            const recruiterJobs = await jobColl.find({
+                $or: [{ recruiterId: recruiterId }, { recruiterId: new ObjectId(recruiterId) }]
+            }).toArray();
+
+            applicants = rankApplicantsForRecruiter({ applicants, recruiterJobs });
+        }
+
         return res.status(200).json({
             message: "Applicants found",
             data: applicants

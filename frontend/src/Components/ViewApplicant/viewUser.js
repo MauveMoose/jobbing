@@ -1,7 +1,7 @@
 import PageHeader from "../Navbar/pageHeader";
 import { useState, useEffect } from "react";
 import AltProfileDetails from "./altProfileDetails";
-import Me from "../../Assets/Images/me.jpg";
+import ProfileWhite from "../../Assets/Images/ProfileWhite.png";
 import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { Navigate } from "react-router-dom";
@@ -60,7 +60,7 @@ function ViewUser(){
                     <AltProfileDetails />
                 </div>
                 <div className="Right"> 
-                    <img src={Me} alt="Applicant" width="500px"/>
+                    <img src={applicant?.profilePic || ProfileWhite} alt="Applicant" width="500px"/>
                 </div>
             </div>
         </div>

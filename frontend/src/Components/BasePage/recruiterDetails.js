@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
+import { clearUser } from "../../redux/userSlice";
 
 function RecruiterDetails(){
+    const dispatch = useDispatch();
     const user = useSelector((state)=>state.user.user);
     const navigate = useNavigate();
 
@@ -64,6 +66,36 @@ function RecruiterDetails(){
         }
     };
 
+    const handleDeleteProfile = async () => {
+        if (!user?._id) return;
+
+        if (postedJobs && postedJobs.length > 0) {
+            return alert(`Cannot delete profile: You still have ${postedJobs.length} active job posting(s). Please delete all your job listings first.`);
+        }
+
+        if (!window.confirm("Are you sure you want to delete your recruiter profile? This action cannot be undone.")) {
+            return;
+        }
+
+        try {
+            const res = await fetch(`http://localhost:5000/recruiters/${user._id}`, {
+                method: "DELETE",
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                alert("Your recruiter profile has been deleted.");
+                dispatch(clearUser());
+                navigate("/");
+            } else {
+                alert(data.message || "Failed to delete recruiter profile.");
+            }
+        } catch (err) {
+            console.error("Error deleting recruiter profile:", err);
+            alert("Error deleting recruiter profile.");
+        }
+    };
+
     return(
         <div>
             <div>
@@ -110,6 +142,20 @@ function RecruiterDetails(){
                     </ul>
                 )}
             </div>
+            {user?.type === "recruiters" && (
+                <div style={{ marginTop: "25px", display: "flex", flexDirection: "column", gap: "15px", alignItems: "flex-start" }}>
+                    <button className="Button" onClick={() => navigate("/addjob")}> 
+                        Add new job 
+                    </button>
+                    <button 
+                        className="Button" 
+                        onClick={handleDeleteProfile} 
+                        style={{ width: "220px" }}
+                    > 
+                        Delete Profile 
+                    </button>
+                </div>
+            )}
         </div>
     )
 }

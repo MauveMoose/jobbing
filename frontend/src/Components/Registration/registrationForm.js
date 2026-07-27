@@ -6,6 +6,7 @@ function RegistrationForm(){
     const location = useLocation();
     const prefilled = location.state?.prefilledData || {};
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         name: prefilled.name || "",
         email: prefilled.email || "",
@@ -25,8 +26,10 @@ function RegistrationForm(){
         projects: prefilled.projects && prefilled.projects.length > 0 
             ? prefilled.projects.map(p => ({ name: p.name || p.title || "", description: p.description || "" }))
             : [{name:"", description:""}],
+        profilePic: "",
         type: "applicants",
-        applications: []
+        applications: [],
+        tags: prefilled.tags || []
     });
 
     const [confirm, setConfirm] = useState("");
@@ -34,6 +37,21 @@ function RegistrationForm(){
     const handleChange = (e) => {
         setFormData({...formData, [e.target.name]:e.target.value})
     }
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) {
+                alert("Profile picture size should be less than 5MB.");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setFormData((prev) => ({ ...prev, profilePic: reader.result }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const handleArrayChange = (index, field, value, key) => {
         setFormData((previousFormData) => ({
@@ -60,6 +78,8 @@ function RegistrationForm(){
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (isSubmitting) return;
 
         const errors = [];
         if (!formData.name || !formData.name.trim()) errors.push("Full Name is missing");
@@ -100,23 +120,32 @@ function RegistrationForm(){
             return alert("Please fix the following issue(s) before submitting:\n\n• " + errors.join("\n• "));
         }
 
-        const res = await fetch("http://localhost:5000/applicants/register", {
-            method:  "POST",
-            headers: {"Content-Type":"application/json"},
-            body:JSON.stringify({
-                ...formData,
-                name: formData.name.trim(),
-                email: formData.email.trim().toLowerCase()
-            }),
-        });
+        setIsSubmitting(true);
 
-        const data = await res.json();
-        if(res.ok){
-            alert("Registration successful!");
-            navigate("/");
-        }
-        else{
-            alert(data.message || "Registration failed.");
+        try {
+            const res = await fetch("http://localhost:5000/applicants/register", {
+                method:  "POST",
+                headers: {"Content-Type":"application/json"},
+                body:JSON.stringify({
+                    ...formData,
+                    name: formData.name.trim(),
+                    email: formData.email.trim().toLowerCase()
+                }),
+            });
+
+            const data = await res.json();
+            if(res.ok){
+                alert("Registration successful!");
+                navigate("/");
+            }
+            else{
+                alert(data.message || "Registration failed.");
+                setIsSubmitting(false);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Registration failed due to a network error. Please try again.");
+            setIsSubmitting(false);
         }
     }
 
@@ -129,6 +158,12 @@ function RegistrationForm(){
             )}
             Full name: <input type="text" name="name" value={formData.name} onChange={handleChange} required /> <br />
             Email: <input type="email" name="email" value={formData.email} onChange={handleChange} required /> <br />
+            Profile Picture (optional): <input type="file" accept="image/*" onChange={handleImageUpload} /> <br />
+            {formData.profilePic && (
+                <div style={{ margin: "10px 0" }}>
+                    <img src={formData.profilePic} alt="Profile Preview" height="90px" style={{ borderRadius: "8px", border: "2px solid #ccc" }} />
+                </div>
+            )}
             Password: <input type="password" name="password" value={formData.password} onChange={handleChange} required /> <br />
             Confirm password: <input type="password" name="confirm" value={confirm} onChange={(e)=>setConfirm(e.target.value)} required /> <br />
             Age: <input type="number" name="age" value={formData.age} onChange={handleChange} />
@@ -161,7 +196,7 @@ function RegistrationForm(){
                 </div>
             ))}
             <button className="Button" type="button" onClick={()=>addArrayItem("projects", {name:"", description:""})}> Add Project </button> <br />
-            <button className="Button" type="submit"> Submit </button>
+            <button className="Button" type="submit" disabled={isSubmitting}> {isSubmitting ? "Registering..." : "Submit"} </button>
         </form>
     )
 }

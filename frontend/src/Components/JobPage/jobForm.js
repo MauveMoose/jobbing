@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 function JobForm(){
     const user = useSelector((state)=>state.user.user);
     const navigate = useNavigate();
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         title:"",
         company:"",
@@ -47,6 +48,8 @@ function JobForm(){
     const handleSubmit = async (e) => {
         e.preventDefault();
 
+        if (isSubmitting) return;
+
         const errors = [];
         if (!formData.title || !formData.title.trim()) errors.push("Job Title is missing");
         if (!formData.company || !formData.company.trim()) errors.push("Company Name is missing");
@@ -62,32 +65,41 @@ function JobForm(){
             return alert("Please fix the following issue(s) before submitting:\n\n• " + errors.join("\n• "));
         }
 
-        const dataToSend = {
-            ...formData,
-            title: formData.title.trim(),
-            company: formData.company.trim(),
-            salary: Number(formData.salary) || 0,
-            yoeNeeded: Number(formData.yoeNeeded) || 0,
-            benefits: formData.benefits.filter(b => b.trim() !== ""),
-            skillsNeeded: formData.skillsNeeded.filter(s => s.trim() !== ""),
-            recruiterId: user?._id,
-            recruiterName: user?.name || "Jobbing",
-            recruiter: user?.name || "Jobbing"
-        }
+        setIsSubmitting(true);
 
-        const res = await fetch("http://localhost:5000/job/register", {
-            method:  "POST",
-            headers: {"Content-Type":"application/json"},
-            body:JSON.stringify(dataToSend),
-        });
-        
-        if(res.ok){
-            alert("Job successfully registered! We'll begin recommending it to applicants right away");
-            navigate("/profile/recruiters");
-        }
-        else{
-            const data = await res.json();
-            alert(data.message || "Failed to post job");
+        try {
+            const dataToSend = {
+                ...formData,
+                title: formData.title.trim(),
+                company: formData.company.trim(),
+                salary: Number(formData.salary) || 0,
+                yoeNeeded: Number(formData.yoeNeeded) || 0,
+                benefits: formData.benefits.filter(b => b.trim() !== ""),
+                skillsNeeded: formData.skillsNeeded.filter(s => s.trim() !== ""),
+                recruiterId: user?._id,
+                recruiterName: user?.name || "Jobbing",
+                recruiter: user?.name || "Jobbing"
+            };
+
+            const res = await fetch("http://localhost:5000/job/register", {
+                method:  "POST",
+                headers: {"Content-Type":"application/json"},
+                body:JSON.stringify(dataToSend),
+            });
+            
+            if(res.ok){
+                alert("Job successfully registered! We'll begin recommending it to applicants right away");
+                navigate("/profile/recruiters");
+            }
+            else{
+                const data = await res.json();
+                alert(data.message || "Failed to post job");
+                setIsSubmitting(false);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to submit job due to a network error. Please try again.");
+            setIsSubmitting(false);
         }
     }
 
@@ -110,12 +122,12 @@ function JobForm(){
             Skills Needed:
             {formData.skillsNeeded.map((skill, i) => (
                 <div key={i} className='Entry-field'>
-                    <input type="text" placeholder='Benefit' value={skill} onChange={(e)=>handleArrayChange(i, e.target.value, "skillsNeeded")} /> <br />
-                    <button className="Button" type="button" onClick={()=>removeArrayItem("skillsNeeded", i)}> Remove Benefit </button> <br />
+                    <input type="text" placeholder='Skill' value={skill} onChange={(e)=>handleArrayChange(i, e.target.value, "skillsNeeded")} /> <br />
+                    <button className="Button" type="button" onClick={()=>removeArrayItem("skillsNeeded", i)}> Remove Skill </button> <br />
                 </div>
             ))}
-            <button className="Button" type="button" onClick={()=>addArrayItem("skillsNeeded")}> Add Benefit </button> <br />
-            <button className="Button" type="submit"> Submit </button>
+            <button className="Button" type="button" onClick={()=>addArrayItem("skillsNeeded")}> Add Skill </button> <br />
+            <button className="Button" type="submit" disabled={isSubmitting}> {isSubmitting ? "Posting Job..." : "Submit"} </button>
         </form>
     )
 }

@@ -4,22 +4,24 @@ import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 
-
 function WelcomePageRecruiter(){
-     const user = useSelector((state)=>state.user.user);
+    const user = useSelector((state)=>state.user.user);
     const [applicants, setApplicants] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(()=>{
         const fetchapplicants = async () => {
             try{
-                const res = await fetch("http://localhost:5000/findusers");
-                const applicants = await res.json();
+                const url = user?._id 
+                    ? `http://localhost:5000/findusers?recruiterId=${user._id}`
+                    : "http://localhost:5000/findusers";
+                const res = await fetch(url);
+                const applicantsData = await res.json();
                 if(res.ok){
-                    setApplicants(applicants.data);
+                    setApplicants(applicantsData.data);
                 }
                 else{
-                    alert(applicants.message);
+                    alert(applicantsData.message);
                 }
             }
             catch(err){
@@ -39,7 +41,7 @@ function WelcomePageRecruiter(){
 
     if(loading){
         return (
-        <div className="Backlayer start"> Loading jobs</div>
+        <div className="Backlayer start"> Loading applicants...</div>
         )
     }
 
@@ -53,11 +55,15 @@ function WelcomePageRecruiter(){
             {applicants.length===0 && <p>No applicants found matching your parameters!</p>}
             {applicants.map((applicant)=>(
                 <UserComponent key={applicant._id}
-                id={applicant._id}
-                name={applicant.name}
-                age={applicant.age}
-                yoe={applicant.yoe}
-                work={applicant.work}/>
+                    id={applicant._id}
+                    name={applicant.name}
+                    age={applicant.age}
+                    yoe={applicant.yoe}
+                    work={applicant.work}
+                    profilePic={applicant.profilePic}
+                    matchPercentage={applicant.matchPercentage}
+                    hasApplied={applicant.hasApplied}
+                />
             ))}
         </div>
     </div>

@@ -34,16 +34,15 @@ function LoginForm(){
         });
         const data = await res.json();
         if(res.ok){
-            const currentuser = data.user;
+            const currentuser = data.data || data.user;
             dispatch(setUser(currentuser));
-            alert(data.message);
+            alert("Login successful!");
             navigate(`/welcome/${usertype}`);
         }
         else{
             alert(data.message || "Login failed.");
         }
     }
-
 
     return(
         <form onSubmit={(e) => e.preventDefault()}>
