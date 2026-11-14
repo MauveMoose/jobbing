@@ -4,7 +4,7 @@ import RecruiterIcon from "../../Assets/Images/RecruiterIcon.png";
 import ChatIconWhite from "../../Assets/Images/ChatIconWhite.png";
 import EditIcon from "../../Assets/Images/EditIcon.png";
 import RecruiterDetails from "./recruiterDetails";
-import ProfileWhite from "../../Assets/Images/ProfileWhite.png";
+import ProfileIcon from "../../Assets/Images/ProfileIcon.png";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { setUser } from "../../redux/userSlice";
@@ -65,14 +65,33 @@ function ProfilePageRecruiter(){
         <div className="Bodysection">
             <div className="Textpartition title">
                 {name}
-                <img src={ChatIconWhite} alt="Chat!" height="50px"/>
+                <a 
+                    href="https://docs.google.com/spreadsheets/d/11PDEYw9vrwcFPjTSjWoOY6uQXBxcB4YeulFm3mH0kGk/edit?gid=0#gid=0" 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    title="Open Placement Records Google Sheet"
+                    style={{ textDecoration: "none" }}
+                >
+                    <img src={ChatIconWhite} alt="Google Sheet Records" height="50px" style={{ cursor: "pointer" }} />
+                </a>
             </div>
             <div className="Textpartition">
                 <div className="Left text">
                     <RecruiterDetails />
                 </div>
                 <div className="Right" style={{ display: "flex", flexDirection: "column", alignItems: "center" }}> 
-                    <img src={user?.profilePic || ProfileWhite} alt="Recruiter" width="500px" style={{ maxHeight: "400px", objectFit: "cover", borderRadius: "12px" }} />
+                    <img 
+                        src={user?.profilePic || ProfileIcon} 
+                        alt="Recruiter Avatar" 
+                        width="500px" 
+                        style={{ 
+                            maxHeight: "400px", 
+                            objectFit: "cover", 
+                            borderRadius: "12px",
+                            backgroundColor: user?.profilePic ? "transparent" : "#F0EAEB",
+                            border: "3px solid #B7202E"
+                        }} 
+                    />
                     <div style={{ marginTop: "15px" }}>
                         <input 
                             type="file" 

@@ -15,7 +15,7 @@ if (process.env.GEMINI_API_KEY) {
 }
 
 /**
- * Smart Skill Tag Extractor (Gemini Primary via @google/genai -> OpenAI Fallback -> Regex Fallback)
+ * Smart Skill Tag Extractor (Gemini Primary via @google/genai -> OpenAI Fallback -> Local Parser Fallback)
  */
 export async function extractSkillTags(text) {
     if (!text || typeof text !== 'string' || !text.trim()) {
@@ -26,13 +26,23 @@ export async function extractSkillTags(text) {
 
     // 1. Primary Attempt: Free Gemini API (@google/genai)
     if (process.env.GEMINI_API_KEY && ai) {
-        const geminiModels = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+        const geminiModels = ["gemini-flash-latest", "gemini-flash-lite-latest"];
         for (const modelName of geminiModels) {
             try {
-                const result = await ai.models.generateContent({
+                const generatePromise = ai.models.generateContent({
                     model: modelName,
-                    contents: systemPrompt
+                    contents: systemPrompt,
+                    config: {
+                        thinkingConfig: {
+                            thinkingBudget: 256
+                        }
+                    }
                 });
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error(`Timeout after 5s on ${modelName}`)), 5000)
+                );
+                const result = await Promise.race([generatePromise, timeoutPromise]);
+
                 let responseText = (result.text || "").trim();
                 if (responseText.startsWith("```")) {
                     responseText = responseText.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
@@ -46,7 +56,7 @@ export async function extractSkillTags(text) {
                 console.warn(`[Gemini Model ${modelName}] Error: ${geminiErr.message}`);
             }
         }
-        console.warn("[Gemini API Fallback] All Gemini models exhausted. Switching to OpenAI fallback...");
+        console.warn("[Gemini API Fallback] Gemini models unavailable. Using fallback...");
     }
 
     // 2. Secondary Fallback: OpenAI GPT-4o
@@ -87,7 +97,7 @@ export async function extractJobSkillTags(title, description = '', skillsNeeded 
 }
 
 /**
- * Extracts structured form fields from raw resume text using OpenAI GPT-4o
+ * Extracts structured form fields from raw resume text (Gemini Primary -> OpenAI GPT-4o Fallback)
  */
 export async function parseResumeWithAI(pdfText) {
     const prompt = `
@@ -124,6 +134,42 @@ Here is the resume text:
 ${pdfText}
 `;
 
+    // 1. Primary Attempt: Free Gemini API (@google/genai)
+    if (process.env.GEMINI_API_KEY && ai) {
+        const geminiModels = ["gemini-flash-latest", "gemini-flash-lite-latest"];
+        for (const modelName of geminiModels) {
+            try {
+                const generatePromise = ai.models.generateContent({
+                    model: modelName,
+                    contents: prompt,
+                    config: {
+                        thinkingConfig: {
+                            thinkingBudget: 256
+                        }
+                    }
+                });
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error(`Timeout after 10s on ${modelName}`)), 10000)
+                );
+                const result = await Promise.race([generatePromise, timeoutPromise]);
+
+                let rawContent = (result.text || "").trim();
+                if (rawContent.startsWith("```")) {
+                    rawContent = rawContent.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
+                }
+                const parsed = JSON.parse(rawContent);
+                if (parsed && typeof parsed === "object") {
+                    console.log(`[Resume Parser - Free Gemini API (${modelName})] Resume parsed successfully.`);
+                    return parsed;
+                }
+            } catch (geminiErr) {
+                console.warn(`[Resume Parser - Gemini ${modelName}] Error: ${geminiErr.message}`);
+            }
+        }
+        console.warn("[Resume Parser Fallback] Gemini models unavailable. Switching to OpenAI fallback...");
+    }
+
+    // 2. Secondary Fallback: OpenAI GPT-4o
     const gptresponse = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [{ role: "user", content: prompt }],

@@ -11,7 +11,6 @@ function RecruiterDetails(){
     const [postedJobs, setPostedJobs] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    const company = user?.company || "";
     const email = user?.email || "";
 
     useEffect(() => {
@@ -73,7 +72,7 @@ function RecruiterDetails(){
             return alert(`Cannot delete profile: You still have ${postedJobs.length} active job posting(s). Please delete all your job listings first.`);
         }
 
-        if (!window.confirm("Are you sure you want to delete your recruiter profile? This action cannot be undone.")) {
+        if (!window.confirm("Are you sure you want to delete your placement cell profile? This action cannot be undone.")) {
             return;
         }
 
@@ -84,22 +83,21 @@ function RecruiterDetails(){
 
             const data = await res.json();
             if (res.ok) {
-                alert("Your recruiter profile has been deleted.");
+                alert("Your placement cell profile has been deleted.");
                 dispatch(clearUser());
                 navigate("/");
             } else {
-                alert(data.message || "Failed to delete recruiter profile.");
+                alert(data.message || "Failed to delete placement cell profile.");
             }
         } catch (err) {
-            console.error("Error deleting recruiter profile:", err);
-            alert("Error deleting recruiter profile.");
+            console.error("Error deleting profile:", err);
+            alert("Error deleting profile.");
         }
     };
 
     return(
         <div>
             <div>
-                Affiliated with: {company} <br /> <br />
                 Email: {email} <br /> <br />
             </div>
             <div>

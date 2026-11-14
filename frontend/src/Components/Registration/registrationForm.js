@@ -13,6 +13,7 @@ function RegistrationForm(){
         password: "",
         age: prefilled.age || 0,
         yoe: prefilled.yoe || 0,
+        kts: prefilled.kts || 0,
         tenth_school: prefilled.tenth_school || "",
         tenth_result: prefilled.tenth_result || "",
         twelfth_school: prefilled.twelfth_school || "",
@@ -168,6 +169,7 @@ function RegistrationForm(){
             Confirm password: <input type="password" name="confirm" value={confirm} onChange={(e)=>setConfirm(e.target.value)} required /> <br />
             Age: <input type="number" name="age" value={formData.age} onChange={handleChange} />
             Years of experience: <input type="number" name="yoe" value={formData.yoe} onChange={handleChange}/> 
+            Active KTs (Backlogs): <input type="number" name="kts" value={formData.kts || 0} onChange={handleChange} min="0" />
             <h4 > 10th grade </h4> <br />
             School name: <input type="text" name="tenth_school" value={formData.tenth_school} onChange={handleChange} /> <br />
             GPA/Percentage: <input type="text" name="tenth_result" value={formData.tenth_result} onChange={handleChange} /> 

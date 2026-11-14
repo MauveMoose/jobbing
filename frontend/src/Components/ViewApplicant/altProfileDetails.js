@@ -31,7 +31,6 @@ function AltProfileDetails(){
     if(!user) return <Navigate to="/" replace />   
     if(loading) return <div className="Backlayer start"> Loading...</div>
 
-
     if(!applicant) return <div className="Backlayer start"> No applicant details found</div>
 
     const name = applicant.name || "";
@@ -54,6 +53,7 @@ function AltProfileDetails(){
             <div>
                 Age: {age} <br /> <br />
                 Years of Experience: {yoe}+ <br /> <br />
+                Active KTs (Backlogs): {applicant.kts || 0} <br /> <br />
                 Education: <br />
                 10th- {tenth_school}, {tenth_result} <br />
                 12th- {twelfth_school}, {twelfth_result} <br />
@@ -74,11 +74,58 @@ function AltProfileDetails(){
                         <li key={project.name || project.title || idx}> {(project.name || project.title)} - {project.description} </li>
                     ))}
                 </ul>
-                My Applications:
+                Applications:
                 <ul>
-                    {applications.map((application, idx) =>(
-                        <li key={application.id || application.jobId || idx}> {application.title} </li>
-                    ))}
+                    {applications.map((application, idx) => {
+                        const isAccepted = application.status === "Accepted";
+                        return (
+                            <li key={application.id || application.jobId || idx} style={{ margin: "10px 0" }}> 
+                                <strong>{application.title}</strong>
+                                {isAccepted && (
+                                    <a 
+                                        href={`http://localhost:5000/applicants/${applicant._id}/acceptance-proof-file?jobId=${application.id || application.jobId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Click to view Placement Cell Proof of Acceptance"
+                                        style={{ 
+                                            backgroundColor: "#2e7d32", 
+                                            color: "#fff", 
+                                            padding: "4px 12px", 
+                                            borderRadius: "8px", 
+                                            fontSize: "20px", 
+                                            fontWeight: "bold",
+                                            marginLeft: "10px",
+                                            textDecoration: "underline",
+                                            display: "inline-block"
+                                        }}
+                                    >
+                                        Accepted ✓ (View Placement Proof)
+                                    </a>
+                                )}
+                                {application.hasOfferLetter && (
+                                    <div style={{ marginTop: "8px" }}>
+                                        <a 
+                                            href={`http://localhost:5000/applicants/${applicant._id}/offer-letter-file?jobId=${application.id || application.jobId}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            style={{ 
+                                                color: "#76ff03", 
+                                                backgroundColor: "rgba(0,0,0,0.4)", 
+                                                padding: "4px 12px", 
+                                                borderRadius: "6px", 
+                                                fontSize: "22px", 
+                                                fontWeight: "bold",
+                                                textDecoration: "underline",
+                                                display: "inline-block"
+                                            }}
+                                        >
+                                            📄 View Candidate Offer Letter ({application.offerLetterName || "Document"})
+                                        </a>
+                                    </div>
+                                )}
+                            </li>
+                        );
+                    })}
                 </ul>
             </div>
         </div>

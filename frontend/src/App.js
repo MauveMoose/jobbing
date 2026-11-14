@@ -15,6 +15,7 @@ import RegistrationPageRecruiter from './Components/Registration/registrationPag
 import AddJob from './Components/JobPage/addJob';
 import WelcomePageApplicant from './Components/WelcomePage/welcomePageApplicant';
 import WelcomePageRecruiter from './Components/WelcomePage/welcomePageRecruiter';
+import ResetPasswordPage from './Components/Login/resetPasswordPage';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
         <Routes>
           <Route path="/" element={<StartPage/>} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/register" element={<RegistrationOptions />} />
           <Route path="/register/options" element={<ApplicantOptions />} />
           <Route path="/resumeupload" element={<ResumeUpload />} />

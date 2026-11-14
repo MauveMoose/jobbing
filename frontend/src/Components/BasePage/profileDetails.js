@@ -24,6 +24,7 @@ function ProfileDetails(){
     const [isEditingAgeYoe, setIsEditingAgeYoe] = useState(false);
     const [editAge, setEditAge] = useState(age);
     const [editYoe, setEditYoe] = useState(yoe);
+    const [editKts, setEditKts] = useState(user?.kts || 0);
 
     const [isAddingWork, setIsAddingWork] = useState(false);
     const [newWorkCompany, setNewWorkCompany] = useState("");
@@ -32,6 +33,8 @@ function ProfileDetails(){
     const [isAddingProject, setIsAddingProject] = useState(false);
     const [newProjectTitle, setNewProjectTitle] = useState("");
     const [newProjectDesc, setNewProjectDesc] = useState("");
+
+    const [uploadingJobId, setUploadingJobId] = useState(null);
 
     if(!user) return <Navigate to="/" replace />   
 
@@ -44,7 +47,7 @@ function ProfileDetails(){
             });
             const data = await res.json();
             if (res.ok && data.user) {
-                dispatch(setUser(data.user));
+                dispatch(setUser({ ...data.user, type: user.type || "applicants" }));
                 alert("Profile updated successfully!");
                 return true;
             } else {
@@ -61,6 +64,7 @@ function ProfileDetails(){
     const handleSaveAgeYoe = async () => {
         const ageNum = Number(editAge);
         const yoeNum = Number(editYoe);
+        const ktsNum = Number(editKts);
 
         if (isNaN(ageNum) || ageNum < 18) {
             return alert("Age must be 18 or higher.");
@@ -71,8 +75,11 @@ function ProfileDetails(){
         if (yoeNum > ageNum) {
             return alert("Years of Experience cannot be greater than Age.");
         }
+        if (isNaN(ktsNum) || ktsNum < 0) {
+            return alert("Active KTs must be 0 or higher.");
+        }
 
-        const success = await updateProfile({ age: ageNum, yoe: yoeNum });
+        const success = await updateProfile({ age: ageNum, yoe: yoeNum, kts: ktsNum });
         if (success) {
             setIsEditingAgeYoe(false);
         }
@@ -116,23 +123,66 @@ function ProfileDetails(){
         await updateProfile({ projects: updatedProjects });
     };
 
+    const handleOfferLetterUpload = (e, application) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            alert("Offer letter file size should be less than 10MB.");
+            return;
+        }
+
+        const jobId = application.id || application.jobId;
+        setUploadingJobId(jobId);
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const base64Content = reader.result;
+            try {
+                const res = await fetch(`http://localhost:5000/applicants/${user._id}/offer-letter`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        jobId: jobId,
+                        offerLetter: base64Content,
+                        offerLetterName: file.name
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.user) {
+                    dispatch(setUser({ ...data.user, type: user.type || "applicants" }));
+                    alert("Offer letter uploaded successfully!");
+                } else {
+                    alert(data.message || "Failed to upload offer letter.");
+                }
+            } catch (err) {
+                console.error("Error uploading offer letter:", err);
+                alert("Failed to connect to server!");
+            } finally {
+                setUploadingJobId(null);
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
     return(
         <div>
             <div>
                 {!isEditingAgeYoe ? (
                     <div>
                         Age: {age} <br />
-                        Years of Experience: {yoe}+ <br /> <br />
-                        <button className="Button" style={{ width: "220px", marginBottom: "30px" }} onClick={() => { setEditAge(age); setEditYoe(yoe); setIsEditingAgeYoe(true); }}>
-                            Edit Age & YoE
+                        Years of Experience: {yoe}+ <br />
+                        Active KTs (Backlogs): {user?.kts || 0} <br /> <br />
+                        <button className="Button" style={{ width: "240px", marginBottom: "30px" }} onClick={() => { setEditAge(age); setEditYoe(yoe); setEditKts(user?.kts || 0); setIsEditingAgeYoe(true); }}>
+                            Edit Age, YoE & KTs
                         </button>
                         <br />
                     </div>
                 ) : (
-                    <div style={{ marginBottom: "30px", padding: "15px", backgroundColor: "#A6927E", borderRadius: "8px" }}>
+                    <div style={{ marginBottom: "30px", padding: "18px", backgroundColor: "#FAECEE", border: "2px solid #B7202E", borderRadius: "10px", color: "#1A1A1A" }}>
                         Age: <input type="number" value={editAge} onChange={(e) => setEditAge(e.target.value)} style={{ width: "100px", height: "35px", fontSize: "24px" }} /> <br /><br />
                         Years of Experience: <input type="number" value={editYoe} onChange={(e) => setEditYoe(e.target.value)} style={{ width: "100px", height: "35px", fontSize: "24px" }} /> <br /><br />
-                        <button className="Button" style={{ width: "180px" }} onClick={handleSaveAgeYoe}> Save Age & YoE </button> &nbsp;
+                        Active KTs: <input type="number" value={editKts} onChange={(e) => setEditKts(e.target.value)} min="0" style={{ width: "100px", height: "35px", fontSize: "24px" }} /> <br /><br />
+                        <button className="Button" style={{ width: "220px" }} onClick={handleSaveAgeYoe}> Save Age, YoE & KTs </button> &nbsp;
                         <button className="Button" style={{ width: "120px" }} onClick={() => setIsEditingAgeYoe(false)}> Cancel </button>
                     </div>
                 )}
@@ -167,7 +217,7 @@ function ProfileDetails(){
                         Add Work Experience
                     </button>
                 ) : (
-                    <div style={{ marginBottom: "20px", padding: "15px", backgroundColor: "#A6927E", borderRadius: "8px" }}>
+                    <div style={{ marginBottom: "20px", padding: "18px", backgroundColor: "#FAECEE", border: "2px solid #B7202E", borderRadius: "10px", color: "#1A1A1A" }}>
                         Company: <input type="text" value={newWorkCompany} onChange={(e) => setNewWorkCompany(e.target.value)} placeholder="Company Name" style={{ width: "80%", height: "35px", fontSize: "24px" }} /> <br /><br />
                         Description: <textarea value={newWorkDesc} onChange={(e) => setNewWorkDesc(e.target.value)} placeholder="Description..." style={{ width: "80%", height: "80px", fontSize: "24px" }} /> <br /><br />
                         <button className="Button" style={{ width: "220px" }} onClick={handleSaveWork}> Save Work Experience </button> &nbsp;
@@ -194,7 +244,7 @@ function ProfileDetails(){
                         Add Project
                     </button>
                 ) : (
-                    <div style={{ marginBottom: "20px", padding: "15px", backgroundColor: "#A6927E", borderRadius: "8px" }}>
+                    <div style={{ marginBottom: "20px", padding: "18px", backgroundColor: "#FAECEE", border: "2px solid #B7202E", borderRadius: "10px", color: "#1A1A1A" }}>
                         Title: <input type="text" value={newProjectTitle} onChange={(e) => setNewProjectTitle(e.target.value)} placeholder="Project Title" style={{ width: "80%", height: "35px", fontSize: "24px" }} /> <br /><br />
                         Description: <textarea value={newProjectDesc} onChange={(e) => setNewProjectDesc(e.target.value)} placeholder="Description..." style={{ width: "80%", height: "80px", fontSize: "24px" }} /> <br /><br />
                         <button className="Button" style={{ width: "180px" }} onClick={handleSaveProject}> Save Project </button> &nbsp;
@@ -205,9 +255,116 @@ function ProfileDetails(){
                 <br />
                 My Applications:
                 <ul>
-                    {applications.map((application, idx) =>(
-                        <li key={application.id || application.jobId || idx}> {application.title} </li>
-                    ))}
+                    {applications.map((application, idx) => {
+                        const isAccepted = application.status === "Accepted";
+                        const jobId = application.id || application.jobId;
+                        return (
+                            <li key={jobId || idx} style={{ margin: "20px 0" }}> 
+                                <span style={{ fontWeight: "bold", fontSize: "36px" }}>{application.title}</span>
+                                {isAccepted && (
+                                    <a 
+                                        href={`http://localhost:5000/applicants/${user._id}/acceptance-proof-file?jobId=${jobId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title="Click to view Placement Cell Proof of Acceptance"
+                                        style={{ 
+                                            backgroundColor: "#2e7d32", 
+                                            color: "#fff", 
+                                            padding: "4px 14px", 
+                                            borderRadius: "14px", 
+                                            fontSize: "22px", 
+                                            fontWeight: "bold",
+                                            marginLeft: "14px",
+                                            display: "inline-block",
+                                            textDecoration: "underline"
+                                        }}
+                                    >
+                                        Accepted ✓ (View Placement Proof)
+                                    </a>
+                                )}
+                                {isAccepted && (
+                                    <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+                                        {application.hasOfferLetter ? (
+                                            <>
+                                                <span style={{ 
+                                                    color: "#2e7d32", 
+                                                    fontWeight: "bold", 
+                                                    fontSize: "24px",
+                                                    backgroundColor: "#E8F5E9",
+                                                    padding: "6px 14px",
+                                                    borderRadius: "8px",
+                                                    border: "1px solid #a5d6a7"
+                                                }}>
+                                                    ✓ Offer Letter Uploaded ({application.offerLetterName || "Offer Letter"})
+                                                </span>
+                                                <a 
+                                                    href={`http://localhost:5000/applicants/${user._id}/offer-letter-file?jobId=${jobId}`} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    style={{ 
+                                                        color: "#1565c0", 
+                                                        backgroundColor: "#E3F2FD",
+                                                        padding: "6px 14px",
+                                                        borderRadius: "8px",
+                                                        border: "1px solid #90caf9",
+                                                        textDecoration: "underline", 
+                                                        fontSize: "24px",
+                                                        fontWeight: "bold"
+                                                    }}
+                                                >
+                                                    View My Offer Letter
+                                                </a>
+                                                <label 
+                                                    className="Button" 
+                                                    style={{ 
+                                                        fontSize: "26px", 
+                                                        padding: "6px 20px", 
+                                                        height: "auto",
+                                                        minWidth: "150px",
+                                                        display: "inline-flex", 
+                                                        alignItems: "center",
+                                                        justifyContent: "center",
+                                                        cursor: "pointer" 
+                                                    }}
+                                                >
+                                                    Change File
+                                                    <input 
+                                                        type="file" 
+                                                        accept=".pdf,image/*" 
+                                                        onChange={(e) => handleOfferLetterUpload(e, application)} 
+                                                        style={{ display: "none" }} 
+                                                    />
+                                                </label>
+                                            </>
+                                        ) : (
+                                            <label 
+                                                className="Button" 
+                                                style={{ 
+                                                    fontSize: "26px", 
+                                                    padding: "8px 24px", 
+                                                    height: "auto",
+                                                    minWidth: "220px",
+                                                    display: "inline-flex", 
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    cursor: "pointer" 
+                                                }}
+                                            >
+                                                {uploadingJobId === jobId ? "Uploading..." : "Upload Offer Letter"}
+                                                <input 
+                                                    type="file" 
+                                                    accept=".pdf,image/*" 
+                                                    onChange={(e) => handleOfferLetterUpload(e, application)} 
+                                                    style={{ display: "none" }} 
+                                                    disabled={uploadingJobId === jobId}
+                                                />
+                                            </label>
+                                        )}
+                                    </div>
+                                )}
+                            </li>
+                        );
+                    })}
                 </ul>
             </div>
         </div>

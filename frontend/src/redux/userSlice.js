@@ -1,7 +1,10 @@
 import {createSlice} from "@reduxjs/toolkit";
 
+const savedShowMatch = localStorage.getItem("showMatchPercentage");
+
 const initialState = {
-    user:null,
+    user: null,
+    showMatchPercentage: savedShowMatch !== null ? JSON.parse(savedShowMatch) : true,
 }
 
 const userSlice = createSlice({
@@ -19,9 +22,13 @@ const userSlice = createSlice({
                 if(!state.user.applications) state.user.applications = [];
                 state.user.applications.push(action.payload);
             }
+        },
+        toggleMatchPercentage: (state) => {
+            state.showMatchPercentage = !state.showMatchPercentage;
+            localStorage.setItem("showMatchPercentage", JSON.stringify(state.showMatchPercentage));
         }
     },
 });
 
-export const {setUser, clearUser, addApplication} = userSlice.actions;
+export const {setUser, clearUser, addApplication, toggleMatchPercentage} = userSlice.actions;
 export default userSlice.reducer;

@@ -4,7 +4,7 @@ import ApplicantIcon from "../../Assets/Images/ApplicantIcon.png";
 import ChatIconWhite from "../../Assets/Images/ChatIconWhite.png";
 import EditIcon from "../../Assets/Images/EditIcon.png";
 import ProfileDetails from "./profileDetails";
-import ProfileWhite from "../../Assets/Images/ProfileWhite.png";
+import ProfileIcon from "../../Assets/Images/ProfileIcon.png";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { clearUser, setUser } from "../../redux/userSlice";
@@ -20,6 +20,19 @@ function ProfilePage(){
         if(user) setName(user.name??"");
         else setName("");
     }, [user]);
+
+    useEffect(() => {
+        if (user?._id && user.type !== "recruiters" && !user.company && !user.positions) {
+            fetch(`http://localhost:5000/applicants/${user._id}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data.data) {
+                        dispatch(setUser({ ...data.data, type: user.type || "applicants" }));
+                    }
+                })
+                .catch(err => console.error("Error syncing applicant profile:", err));
+        }
+    }, [user?._id, user?.type, user?.company, user?.positions, dispatch]);
 
     const handleDeleteProfile = async () => {
         if (!user?._id) return;
@@ -65,7 +78,7 @@ function ProfilePage(){
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    dispatch(setUser(data.user));
+                    dispatch(setUser({ ...data.user, type: user.type || "applicants" }));
                     alert("Profile picture updated successfully!");
                 } else {
                     alert(data.message || "Failed to update profile picture.");
@@ -105,7 +118,18 @@ function ProfilePage(){
                     </button>
                 </div>
                 <div className="Right" style={{ display: "flex", flexDirection: "column", alignItems: "center" }}> 
-                    <img src={user?.profilePic || ProfileWhite} alt="Applicant" width="500px" style={{ maxHeight: "400px", objectFit: "cover", borderRadius: "12px" }} />
+                    <img 
+                        src={user?.profilePic || ProfileIcon} 
+                        alt="Applicant Avatar" 
+                        width="500px" 
+                        style={{ 
+                            maxHeight: "400px", 
+                            objectFit: "cover", 
+                            borderRadius: "12px",
+                            backgroundColor: user?.profilePic ? "transparent" : "#F0EAEB",
+                            border: "3px solid #B7202E"
+                        }} 
+                    />
                     <div style={{ marginTop: "15px" }}>
                         <input 
                             type="file" 

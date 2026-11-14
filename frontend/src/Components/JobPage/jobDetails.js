@@ -36,7 +36,7 @@ function JobDetails(){
     return(
         <div>
             <div>
-                Posted by Recruiter: {recruiterName} <br /> <br />
+                Posted by Placement Cell: {recruiterName} <br /> <br />
                 Years of Experience needed: {job.yoeNeeded || 0}+ <br /> <br />
                 Job description: <br />
                 {job.description || "No description provided."}
