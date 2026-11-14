@@ -33,6 +33,7 @@ let db;
 async function cleanupOrphanJobs() {
     try {
         const recruiterIds = await db.collection("recruiters").distinct("_id");
+        if (recruiterIds.length === 0) return;
         const stringIds = recruiterIds.map(id => id.toString());
         const orphanJobs = await db.collection("job").find({ recruiterId: { $exists: true } }).toArray();
         const toDelete = orphanJobs.filter(j => j.recruiterId && !stringIds.includes(j.recruiterId.toString())).map(j => j._id);
@@ -171,13 +172,13 @@ app.post("/forgot-password", async (req, res) => {
             );
         }
 
-        await sendPasswordResetEmail({
+        sendPasswordResetEmail({
             email: cleanEmail,
             applicantUser,
             recruiterUser,
             applicantToken,
             recruiterToken
-        });
+        }).catch(emailErr => console.error("Error sending password reset email:", emailErr));
 
         return res.status(200).json({ message: "A password reset link has been sent to your email address. Please check your inbox!" });
     } catch (err) {
@@ -274,42 +275,34 @@ app.post("/apply", async (req, res) => {
             }
         }
 
-        // 3. Send email to recruiter via emailService module
-        if (recruiterEmail) {
-            try {
-                await sendRecruiterNotificationEmail({
-                    recruiterEmail,
-                    recruiterName,
-                    applicantName: applicantObj?.name || 'Applicant',
-                    applicantEmail: applicantObj?.email || 'N/A',
-                    applicantAge: applicantObj?.age || 'N/A',
-                    applicantYoe: applicantObj?.yoe || 0,
-                    jobTitle: title,
-                    work: applicantObj?.work || [],
-                    projects: applicantObj?.projects || []
-                });
-                console.log(`[Email Sent] Recruiter notified (${recruiterEmail}).`);
-            } catch (emailErr) {
-                console.error("Error sending application email to recruiter:", emailErr);
-            }
-        } else {
-            console.log(`[Application Recorded] No recruiter email found for job "${title}".`);
+        // 3. Sync application row to Google Sheets & notify recruiter in the background
+        if (applicantObj && jobObj) {
+            const rankedJob = rankJobsForApplicant({ jobs: [jobObj], applicant: applicantObj })[0];
+            const matchPct = rankedJob?.matchPercentage || 50;
+            appendApplicationToSheet({
+                applicant: applicantObj,
+                job: jobObj,
+                matchPercentage: matchPct,
+                status: "Applied"
+            }).catch(sheetErr => console.error("Google Sheets sync error on apply:", sheetErr));
         }
 
-        // 4. Sync application row to Google Sheets
-        if (applicantObj && jobObj) {
-            try {
-                const rankedJob = rankJobsForApplicant({ jobs: [jobObj], applicant: applicantObj })[0];
-                const matchPct = rankedJob?.matchPercentage || 50;
-                await appendApplicationToSheet({
-                    applicant: applicantObj,
-                    job: jobObj,
-                    matchPercentage: matchPct,
-                    status: "Applied"
-                });
-            } catch (sheetErr) {
-                console.error("Google Sheets sync error on apply:", sheetErr);
-            }
+        if (recruiterEmail) {
+            sendRecruiterNotificationEmail({
+                recruiterEmail,
+                recruiterName,
+                applicantName: applicantObj?.name || 'Applicant',
+                applicantEmail: applicantObj?.email || 'N/A',
+                applicantAge: applicantObj?.age || 'N/A',
+                applicantYoe: applicantObj?.yoe || 0,
+                jobTitle: title,
+                work: applicantObj?.work || [],
+                projects: applicantObj?.projects || []
+            })
+                .then(() => console.log(`[Email Sent] Recruiter notified (${recruiterEmail}).`))
+                .catch(emailErr => console.error("Error sending application email to recruiter:", emailErr));
+        } else {
+            console.log(`[Application Recorded] No recruiter email found for job "${title}".`);
         }
 
         res.status(201).json({ message: "Application successful! Recruiter notified via email." });
@@ -362,14 +355,10 @@ app.post("/unapply", async (req, res) => {
         }
 
         if (existingApplicant.email && resolvedTitle) {
-            try {
-                await deleteApplicationFromSheet({
-                    applicantEmail: existingApplicant.email,
-                    jobTitle: resolvedTitle
-                });
-            } catch (sheetErr) {
-                console.error("Google Sheets delete error on unapply:", sheetErr);
-            }
+            deleteApplicationFromSheet({
+                applicantEmail: existingApplicant.email,
+                jobTitle: resolvedTitle
+            }).catch(sheetErr => console.error("Google Sheets delete error on unapply:", sheetErr));
         }
 
         const updatedApplicant = await applicantsColl.findOne(

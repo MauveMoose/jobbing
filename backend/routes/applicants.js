@@ -75,23 +75,17 @@ router.post('/register', async (req, res) => {
         await activecollection.insertOne(data);
         console.log(`[Registration] New applicants account registered (${cleanEmail}). Sending verification email...`);
 
-        // Sync new applicant to Master Registered Users Google Sheet
-        try {
-            await appendRegisteredApplicantToSheet(data);
-        } catch (sheetErr) {
-            console.error("Google Sheets append error on registration:", sheetErr);
-        }
+        // Sync new applicant to Master Registered Users Google Sheet & send verification email in background
+        appendRegisteredApplicantToSheet(data).catch(sheetErr =>
+            console.error("Google Sheets append error on registration:", sheetErr)
+        );
 
-        try {
-            await sendVerificationEmail({
-                email: cleanEmail,
-                name: name.trim(),
-                collection: "applicants",
-                verificationToken: verificationToken
-            });
-        } catch (emailErr) {
-            console.error("Error sending verification email:", emailErr);
-        }
+        sendVerificationEmail({
+            email: cleanEmail,
+            name: name.trim(),
+            collection: "applicants",
+            verificationToken: verificationToken
+        }).catch(emailErr => console.error("Error sending verification email:", emailErr));
 
         return res.status(201).json({ message: "Registration successful! A verification link has been sent to your email address. Please verify your email before logging in." });
     } catch (err) {
@@ -215,12 +209,10 @@ router.put('/:id', async (req, res) => {
             { projection: { "applications.offerLetter": 0, "applications.acceptanceProof": 0, password: 0 } }
         );
 
-        // Sync updated profile details to Master Registered Users Sheet & Applications Sheet
-        try {
-            await updateRegisteredApplicantInSheet(updatedApplicant);
-        } catch (sheetErr) {
-            console.error("Google Sheets update error on profile edit:", sheetErr);
-        }
+        // Sync updated profile details to Master Registered Users Sheet & Applications Sheet in background
+        updateRegisteredApplicantInSheet(updatedApplicant).catch(sheetErr =>
+            console.error("Google Sheets update error on profile edit:", sheetErr)
+        );
 
         return res.status(200).json({
             message: "Profile updated successfully!",
@@ -277,24 +269,23 @@ router.put('/:id/offer-letter', async (req, res) => {
             { projection: { "applications.offerLetter": 0, "applications.acceptanceProof": 0, password: 0 } }
         );
 
-        // Sync offer letter status to Google Sheets with direct document download link
+        // Sync offer letter status to Google Sheets in background
         if (existingApplicant?.email && jobId) {
-            try {
-                const jobColl = db.collection("job");
-                const jobObj = await jobColl.findOne({ _id: new ObjectId(jobId) });
-                if (jobObj && jobObj.title) {
-                    const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
-                    const fileUrl = `${backendUrl}/applicants/${id}/offer-letter-file?jobId=${jobId}`;
-                    const hyperFormula = `=HYPERLINK("${fileUrl}", "Uploaded ✓ (View File)")`;
-                    await updateApplicationStatusInSheet({
-                        applicantEmail: existingApplicant.email,
-                        jobTitle: jobObj.title,
-                        offerLetterStatus: hyperFormula
-                    });
-                }
-            } catch (sheetErr) {
-                console.error("Google Sheets update error on offer letter upload:", sheetErr);
-            }
+            const jobColl = db.collection("job");
+            jobColl.findOne({ _id: new ObjectId(jobId) })
+                .then(jobObj => {
+                    if (jobObj && jobObj.title) {
+                        const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                        const fileUrl = `${backendUrl}/applicants/${id}/offer-letter-file?jobId=${jobId}`;
+                        const hyperFormula = `=HYPERLINK("${fileUrl}", "Uploaded ✓ (View File)")`;
+                        return updateApplicationStatusInSheet({
+                            applicantEmail: existingApplicant.email,
+                            jobTitle: jobObj.title,
+                            offerLetterStatus: hyperFormula
+                        });
+                    }
+                })
+                .catch(sheetErr => console.error("Google Sheets update error on offer letter upload:", sheetErr));
         }
 
         return res.status(200).json({

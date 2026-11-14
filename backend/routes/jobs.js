@@ -62,35 +62,27 @@ router.post('/accept-applicant', async (req, res) => {
             }
         );
 
-        if (applicantObj.email) {
-            try {
-                await sendApplicantAcceptanceEmail({
-                    applicantEmail: applicantObj.email,
-                    applicantName: applicantObj.name || "Candidate",
-                    jobTitle: jobObj.title || "Position",
-                    companyName: jobObj.company || "Company",
-                    recruiterName: jobObj.recruiterName || "Recruiter"
-                });
-            } catch (emailErr) {
-                console.error("Error sending acceptance email:", emailErr);
-            }
-        }
-
-        // Sync status update to Google Sheets (Status = Accepted with Placement Proof link, Offer Letter Status = Pending until candidate uploads)
+        // Sync status update to Google Sheets & send email in the background so UI responds immediately
         if (applicantObj?.email && jobObj?.title) {
             const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
             const proofFileUrl = `${backendUrl}/applicants/${applicantId}/acceptance-proof-file?jobId=${jobId}`;
             const statusHyperlinkFormula = `=HYPERLINK("${proofFileUrl}", "Accepted ✓ (View Proof)")`;
-            try {
-                await updateApplicationStatusInSheet({
-                    applicantEmail: applicantObj.email,
-                    jobTitle: jobObj.title,
-                    newStatus: statusHyperlinkFormula,
-                    offerLetterStatus: "Pending"
-                });
-            } catch (sheetErr) {
-                console.error("Google Sheets update error on accept:", sheetErr);
-            }
+            updateApplicationStatusInSheet({
+                applicantEmail: applicantObj.email,
+                jobTitle: jobObj.title,
+                newStatus: statusHyperlinkFormula,
+                offerLetterStatus: "Pending"
+            }).catch(sheetErr => console.error("Google Sheets update error on accept:", sheetErr));
+        }
+
+        if (applicantObj.email) {
+            sendApplicantAcceptanceEmail({
+                applicantEmail: applicantObj.email,
+                applicantName: applicantObj.name || "Candidate",
+                jobTitle: jobObj.title || "Position",
+                companyName: jobObj.company || "Company",
+                recruiterName: jobObj.recruiterName || "Recruiter"
+            }).catch(emailErr => console.error("Error sending acceptance email:", emailErr));
         }
 
         return res.status(200).json({ 
@@ -158,31 +150,23 @@ router.post('/unaccept-applicant', async (req, res) => {
             }
         );
 
-        if (applicantObj.email) {
-            try {
-                await sendApplicantUnacceptEmail({
-                    applicantEmail: applicantObj.email,
-                    applicantName: applicantObj.name || "Candidate",
-                    jobTitle: jobObj.title || "Position",
-                    companyName: jobObj.company || "Company"
-                });
-            } catch (emailErr) {
-                console.error("Error sending unaccept notification email:", emailErr);
-            }
+        // Update Google Sheets & send notification email in the background so UI responds immediately
+        if (applicantObj?.email && jobObj?.title) {
+            updateApplicationStatusInSheet({
+                applicantEmail: applicantObj.email,
+                jobTitle: jobObj.title,
+                newStatus: "Applied",
+                offerLetterStatus: "N/A"
+            }).catch(sheetErr => console.error("Google Sheets update error on unaccept:", sheetErr));
         }
 
-        // Update Google Sheets: Reset Status to "Applied" and Offer Letter Status to "N/A"
-        if (applicantObj?.email && jobObj?.title) {
-            try {
-                await updateApplicationStatusInSheet({
-                    applicantEmail: applicantObj.email,
-                    jobTitle: jobObj.title,
-                    newStatus: "Applied",
-                    offerLetterStatus: "N/A"
-                });
-            } catch (sheetErr) {
-                console.error("Google Sheets update error on unaccept:", sheetErr);
-            }
+        if (applicantObj.email) {
+            sendApplicantUnacceptEmail({
+                applicantEmail: applicantObj.email,
+                applicantName: applicantObj.name || "Candidate",
+                jobTitle: jobObj.title || "Position",
+                companyName: jobObj.company || "Company"
+            }).catch(emailErr => console.error("Error sending unaccept notification email:", emailErr));
         }
 
         return res.status(200).json({ message: "Candidate acceptance revoked successfully. Candidate notified and status reset to Applied." });

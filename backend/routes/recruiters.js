@@ -47,16 +47,12 @@ router.post('/register', async (req, res) => {
         await activecollection.insertOne(data);
         console.log(`[Registration] New recruiters account registered (${cleanEmail}). Sending verification email...`);
 
-        try {
-            await sendVerificationEmail({
-                email: cleanEmail,
-                name: name.trim(),
-                collection: "recruiters",
-                verificationToken: verificationToken
-            });
-        } catch (emailErr) {
-            console.error("Error sending verification email:", emailErr);
-        }
+        sendVerificationEmail({
+            email: cleanEmail,
+            name: name.trim(),
+            collection: "recruiters",
+            verificationToken: verificationToken
+        }).catch(emailErr => console.error("Error sending verification email:", emailErr));
 
         return res.status(201).json({ message: "Registration successful! A verification link has been sent to your email address. Please verify your email before logging in." });
     } catch (err) {

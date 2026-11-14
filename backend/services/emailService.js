@@ -4,12 +4,43 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const createTransporter = async () => {
+    const gasWebhookUrl = process.env.GOOGLE_APPS_SCRIPT_URL || process.env.GAS_EMAIL_URL;
+
+    if (gasWebhookUrl) {
+        return {
+            sendMail: async (mailOptions) => {
+                const nameMatch = typeof mailOptions.from === 'string' && mailOptions.from.match(/^"([^"]+)"/);
+                const senderName = nameMatch ? nameMatch[1] : 'Somaiya Jobbing Portal';
+
+                const res = await fetch(gasWebhookUrl.trim(), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: mailOptions.to,
+                        subject: mailOptions.subject,
+                        text: mailOptions.text || '',
+                        html: mailOptions.html || '',
+                        name: senderName
+                    })
+                });
+
+                if (!res.ok) {
+                    throw new Error(`Google Apps Script email bridge returned HTTP ${res.status}`);
+                }
+                return { messageId: `<gas-${Date.now()}@somaiyajobbing.gmail.com>` };
+            }
+        };
+    }
+
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
         return nodemailer.createTransport({
             service: process.env.EMAIL_SERVICE || 'gmail',
             host: process.env.SMTP_HOST,
             port: Number(process.env.SMTP_PORT) || 587,
             secure: process.env.SMTP_SECURE === 'true',
+            connectionTimeout: 8000,
+            greetingTimeout: 8000,
+            socketTimeout: 10000,
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS,
