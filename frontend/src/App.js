@@ -1,5 +1,7 @@
 
 import './App.css';
+import { useEffect } from 'react';
+import ApplicantIcon from './Assets/Images/ApplicantIcon.png';
 import RegistrationOptions from './Components/StartPage/registrationOptions';
 import ResumeUpload from './Components/StartPage/resumeUpload';
 import ApplicantOptions from './Components/StartPage/applicantOptions';
@@ -18,6 +20,36 @@ import WelcomePageRecruiter from './Components/WelcomePage/welcomePageRecruiter'
 import ResetPasswordPage from './Components/Login/resetPasswordPage';
 
 function App() {
+  useEffect(() => {
+    const img = new Image();
+    img.src = ApplicantIcon;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+
+      // Draw Somaiya Red (#B7202E) rounded background
+      ctx.fillStyle = '#B7202E';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, 64, 64, 14);
+      ctx.fill();
+
+      // Draw ApplicantIcon.png in crisp white centered on the red background
+      ctx.filter = 'brightness(0) invert(1)';
+      ctx.drawImage(img, 8, 8, 48, 48);
+
+      let link = document.querySelector("link[rel~='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.type = 'image/png';
+      link.href = canvas.toDataURL('image/png');
+    };
+  }, []);
+
   return (
     <Router>
       <div>

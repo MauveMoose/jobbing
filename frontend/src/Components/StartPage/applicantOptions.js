@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import FormHeader from "../Navbar/formHeader";
 import { useState } from "react";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function ApplicantOptions(){
     const navigate = useNavigate();
     const [file, setFile] = useState(null);
@@ -19,7 +21,7 @@ function ApplicantOptions(){
         formData.append("resume", file);
         try{
             setLoading(true);
-            const res = await fetch("http://localhost:5000/upload-resume", {
+            const res = await fetch(`${API_BASE_URL}/upload-resume`, {
                 method:'POST',
                 headers:{'Content-Type':'application/json'},
                 body:formData,
