@@ -10,7 +10,7 @@ import { parseResumeWithAI } from './services/aiService.js';
 import { sendRecruiterNotificationEmail, sendPasswordResetEmail } from './services/emailService.js';
 import { hashPassword, isValidSomaiyaEmail } from './services/authService.js';
 import { rankApplicantsForRecruiter, rankJobsForApplicant } from './services/recommendationService.js';
-import { appendApplicationToSheet } from './services/googleSheetsService.js';
+import { appendApplicationToSheet, deleteApplicationFromSheet } from './services/googleSheetsService.js';
 
 import applicantRoutes from './routes/applicants.js';
 import recruiterRoutes from './routes/recruiters.js';
@@ -24,7 +24,7 @@ app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cors());
 
 dotenv.config(); // Loads in the API key from the .env file
-const connectionstring = process.env.MONGO_URL;
+const connectionstring = process.env.MONGO_URL || process.env.MONGODB_URI || "mongodb://127.0.0.1:27017";
 
 const c = new MongoClient(connectionstring);
 
@@ -106,12 +106,14 @@ app.get("/verify-email", async (req, res) => {
             user = await activecoll.findOne({ verificationToken: token });
         }
 
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+
         if (!user) {
             return res.status(400).send(`
                 <div style="font-family: Arial, sans-serif; text-align: center; margin-top: 50px;">
                     <h1 style="color: #f44336;">Invalid or Expired Verification Link</h1>
                     <p>This verification link is invalid or your account is already verified.</p>
-                    <a href="http://localhost:3000/login" style="background-color: #555; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Login</a>
+                    <a href="${frontendUrl}/login" style="background-color: #555; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Login</a>
                 </div>
             `);
         }
@@ -125,7 +127,7 @@ app.get("/verify-email", async (req, res) => {
             <div style="font-family: Arial, sans-serif; text-align: center; margin-top: 50px;">
                 <h1 style="color: #4CAF50;">✓ Email Successfully Verified!</h1>
                 <p style="font-size: 18px; color: #333;">Your account (${user.email}) has been activated.</p>
-                <p><a href="http://localhost:3000/login" style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Log In Now</a></p>
+                <p><a href="${frontendUrl}/login" style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Log In Now</a></p>
             </div>
         `);
     } catch (err) {
@@ -317,6 +319,74 @@ app.post("/apply", async (req, res) => {
     }
 });
 
+app.post("/unapply", async (req, res) => {
+    try {
+        const userId = req.body.userId || req.body.applicantId;
+        const { jobId, title } = req.body;
+        if (!userId || !jobId) {
+            return res.status(400).json({ message: "userId and jobId are required." });
+        }
+
+        const applicantsColl = db.collection("applicants");
+        const jobColl = db.collection("job");
+
+        const existingApplicant = await applicantsColl.findOne({ _id: new ObjectId(userId) });
+        if (!existingApplicant) {
+            return res.status(404).json({ message: "Applicant profile not found." });
+        }
+
+        const appEntry = (existingApplicant.applications || []).find(
+            app => (app.id || app.jobId)?.toString() === jobId.toString()
+        );
+
+        if (!appEntry) {
+            return res.status(404).json({ message: "You have not applied for this job." });
+        }
+
+        // Remove application from applicant's profile in MongoDB
+        const pullConditions = [{ id: jobId }, { jobId: jobId }];
+        if (ObjectId.isValid(jobId)) {
+            pullConditions.push({ id: new ObjectId(jobId) }, { jobId: new ObjectId(jobId) });
+        }
+
+        await applicantsColl.updateOne(
+            { _id: new ObjectId(userId) },
+            { $pull: { applications: { $or: pullConditions } } }
+        );
+
+        // Determine job title to remove matching row from Google Sheets
+        let resolvedTitle = title || appEntry.title;
+        if (!resolvedTitle && ObjectId.isValid(jobId)) {
+            const jobObj = await jobColl.findOne({ _id: new ObjectId(jobId) });
+            if (jobObj) resolvedTitle = jobObj.title;
+        }
+
+        if (existingApplicant.email && resolvedTitle) {
+            try {
+                await deleteApplicationFromSheet({
+                    applicantEmail: existingApplicant.email,
+                    jobTitle: resolvedTitle
+                });
+            } catch (sheetErr) {
+                console.error("Google Sheets delete error on unapply:", sheetErr);
+            }
+        }
+
+        const updatedApplicant = await applicantsColl.findOne(
+            { _id: new ObjectId(userId) },
+            { projection: { "applications.offerLetter": 0, "applications.acceptanceProof": 0, password: 0 } }
+        );
+
+        return res.status(200).json({
+            message: "Application withdrawn successfully!",
+            user: updatedApplicant
+        });
+    } catch (err) {
+        console.error("Error in /unapply:", err);
+        return res.status(500).json({ message: "Failed to withdraw application." });
+    }
+});
+
 app.post("/search", async (req, res) => {
     try {
         const activecollection = db.collection("job");
@@ -468,6 +538,7 @@ process.on("SIGINT", async () => {
     process.exit(0);
 });
 
+const PORT = process.env.PORT || 5000;
 ConnectDB().then(() => {
-    app.listen(5000, () => console.log("Server running on http://localhost:5000"));
+    app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 });

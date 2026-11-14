@@ -5,6 +5,8 @@ import { useSelector, useDispatch } from "react-redux";
 import { Navigate } from "react-router-dom";
 import { toggleMatchPercentage } from "../../redux/userSlice";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function WelcomePageApplicant(){
     const dispatch = useDispatch();
     const user = useSelector((state)=>state.user.user);
@@ -16,7 +18,7 @@ function WelcomePageApplicant(){
         if(!user) return;
         const fetchjobs = async () => {
             try{
-                const res = await fetch("http://localhost:5000/search", {
+                const res = await fetch(`${API_BASE_URL}/search`, {
                     method:"POST",
                     headers:{"Content-Type":"application/json",},
                     body:JSON.stringify({yoe: user.yoe || 0, applicantId: user._id}),

@@ -8,6 +8,8 @@ import { Navigate } from "react-router-dom";
 import ApplicantIcon from "../../Assets/Images/ApplicantIcon.png";
 import ChatIconWhite from "../../Assets/Images/ChatIconWhite.png";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 /*USE A USE REFERENCE ON THE LOGIN PAGE TO STORE A REFERENCE TO THE
 CURRENT USER. THEN, SIMPLY EXTRACT THE CURRENT USER'S DATA WHENEVER NEEDED
 */
@@ -21,7 +23,7 @@ function ViewUser(){
     useEffect(()=>{
         const fetchapplicant = async()=>{
             try{
-                const res = await fetch(`http://localhost:5000/applicants/${id}`);
+                const res = await fetch(`${API_BASE_URL}/applicants/${id}`);
                 const data = await res.json();
                 if(res.ok){
                     setApplicant(data.data);

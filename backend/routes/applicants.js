@@ -283,7 +283,8 @@ router.put('/:id/offer-letter', async (req, res) => {
                 const jobColl = db.collection("job");
                 const jobObj = await jobColl.findOne({ _id: new ObjectId(jobId) });
                 if (jobObj && jobObj.title) {
-                    const fileUrl = `http://localhost:5000/applicants/${id}/offer-letter-file?jobId=${jobId}`;
+                    const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+                    const fileUrl = `${backendUrl}/applicants/${id}/offer-letter-file?jobId=${jobId}`;
                     const hyperFormula = `=HYPERLINK("${fileUrl}", "Uploaded ✓ (View File)")`;
                     await updateApplicationStatusInSheet({
                         applicantEmail: existingApplicant.email,

@@ -23,6 +23,14 @@ const userSlice = createSlice({
                 state.user.applications.push(action.payload);
             }
         },
+        removeApplication: (state, action) => {
+            if(state.user && state.user.applications){
+                const targetId = action.payload?.toString();
+                state.user.applications = state.user.applications.filter(
+                    a => (a.id || a.jobId)?.toString() !== targetId
+                );
+            }
+        },
         toggleMatchPercentage: (state) => {
             state.showMatchPercentage = !state.showMatchPercentage;
             localStorage.setItem("showMatchPercentage", JSON.stringify(state.showMatchPercentage));
@@ -30,5 +38,5 @@ const userSlice = createSlice({
     },
 });
 
-export const {setUser, clearUser, addApplication, toggleMatchPercentage} = userSlice.actions;
+export const {setUser, clearUser, addApplication, removeApplication, toggleMatchPercentage} = userSlice.actions;
 export default userSlice.reducer;

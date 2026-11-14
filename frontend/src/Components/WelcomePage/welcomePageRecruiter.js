@@ -5,6 +5,8 @@ import { Navigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { toggleMatchPercentage } from "../../redux/userSlice";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function WelcomePageRecruiter(){
     const dispatch = useDispatch();
     const user = useSelector((state)=>state.user.user);
@@ -16,8 +18,8 @@ function WelcomePageRecruiter(){
         const fetchapplicants = async () => {
             try{
                 const url = user?._id 
-                    ? `http://localhost:5000/findusers?recruiterId=${user._id}`
-                    : "http://localhost:5000/findusers";
+                    ? `${API_BASE_URL}/findusers?recruiterId=${user._id}`
+                    : `${API_BASE_URL}/findusers`;
                 const res = await fetch(url);
                 const applicantsData = await res.json();
                 if(res.ok){

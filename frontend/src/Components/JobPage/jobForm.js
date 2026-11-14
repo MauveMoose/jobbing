@@ -2,6 +2,8 @@ import {useState} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function JobForm(){
     const user = useSelector((state)=>state.user.user);
     const navigate = useNavigate();
@@ -92,7 +94,7 @@ function JobForm(){
                 recruiter: user?.name || "Jobbing"
             };
 
-            const res = await fetch("http://localhost:5000/job/register", {
+            const res = await fetch(`${API_BASE_URL}/job/register`, {
                 method:  "POST",
                 headers: {"Content-Type":"application/json"},
                 body:JSON.stringify(dataToSend),

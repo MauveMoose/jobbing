@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function JobDetails(){
     const {id} = useParams();
     const [job, setJob] = useState(null);
@@ -9,7 +11,7 @@ function JobDetails(){
     useEffect(()=>{
         const fetchjob = async()=>{
             try{
-                const res = await fetch(`http://localhost:5000/job/${id}`);
+                const res = await fetch(`${API_BASE_URL}/job/${id}`);
                 const data = await res.json();
                 if(res.ok){
                     setJob(data.data);

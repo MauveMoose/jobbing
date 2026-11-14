@@ -24,6 +24,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Google Cloud credentials
+# Google Cloud credentials & uploads
 jobbing-*.json
+google-credentials.json
 *.json.key
+uploads/
+/uploads

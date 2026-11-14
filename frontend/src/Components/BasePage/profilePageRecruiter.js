@@ -9,6 +9,8 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { setUser } from "../../redux/userSlice";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function ProfilePageRecruiter(){
     const dispatch = useDispatch();
     const navigate = useNavigate();
@@ -33,7 +35,7 @@ function ProfilePageRecruiter(){
         reader.onloadend = async () => {
             const base64Image = reader.result;
             try {
-                const res = await fetch(`http://localhost:5000/recruiters/${user._id}`, {
+                const res = await fetch(`${API_BASE_URL}/recruiters/${user._id}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ profilePic: base64Image })

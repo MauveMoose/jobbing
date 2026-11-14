@@ -5,8 +5,10 @@ import office from "../../Assets/Images/office.jpeg";
 import ProfileIcon from "../../Assets/Images/ProfileIcon.png";
 import { useParams, useNavigate, Navigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { addApplication, toggleMatchPercentage, setUser } from "../../redux/userSlice";
+import { addApplication, removeApplication, toggleMatchPercentage, setUser } from "../../redux/userSlice";
 import MatchBreakdownModal from "../WelcomePage/matchBreakdownModal";
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 function JobPage(){
     const dispatch = useDispatch();
@@ -17,6 +19,7 @@ function JobPage(){
     const [job, setJob] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isApplying, setIsApplying] = useState(false);
+    const [isUnapplying, setIsUnapplying] = useState(false);
     const [appliedApplicants, setAppliedApplicants] = useState([]);
     const [fetchingApplicants, setFetchingApplicants] = useState(false);
     const [acceptingId, setAcceptingId] = useState(null);
@@ -36,7 +39,7 @@ function JobPage(){
     useEffect(()=>{
         const fetchjob = async()=>{
             try{
-                const res = await fetch(`http://localhost:5000/job/${id}`);
+                const res = await fetch(`${API_BASE_URL}/job/${id}`);
                 const data = await res.json();
                 if(res.ok){
                     setJob(data.data);
@@ -52,7 +55,7 @@ function JobPage(){
         fetchjob();
 
         if (user?._id && user.type !== "recruiters" && !user.company && !user.positions) {
-            fetch(`http://localhost:5000/applicants/${user._id}`)
+            fetch(`${API_BASE_URL}/applicants/${user._id}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data && data.data) {
@@ -74,7 +77,7 @@ function JobPage(){
             const fetchApplicants = async () => {
                 setFetchingApplicants(true);
                 try {
-                    const res = await fetch(`http://localhost:5000/job/${id}/applicants?recruiterId=${user._id}`);
+                    const res = await fetch(`${API_BASE_URL}/job/${id}/applicants?recruiterId=${user._id}`);
                     const data = await res.json();
                     if (res.ok) {
                         setAppliedApplicants(data.data || []);
@@ -114,7 +117,7 @@ function JobPage(){
             const base64Content = reader.result;
             setUploadingOfferLetter(true);
             try {
-                const res = await fetch(`http://localhost:5000/applicants/${user._id}/offer-letter`, {
+                const res = await fetch(`${API_BASE_URL}/applicants/${user._id}/offer-letter`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -153,7 +156,7 @@ function JobPage(){
 
         try {
             setIsApplying(true);
-            const res = await fetch("http://localhost:5000/apply", {
+            const res = await fetch(`${API_BASE_URL}/apply`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -185,6 +188,44 @@ function JobPage(){
         }
     };
 
+    const handleUnapply = async () => {
+        if (!user || user.type === "recruiters") return;
+        if (!window.confirm(`Are you sure you want to withdraw your application for ${title}?`)) {
+            return;
+        }
+
+        try {
+            setIsUnapplying(true);
+            const res = await fetch(`${API_BASE_URL}/unapply`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: user._id,
+                    applicantId: user._id,
+                    jobId: id,
+                    title: title
+                })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                if (data.user) {
+                    dispatch(setUser({ ...data.user, type: user.type || "applicants" }));
+                } else {
+                    dispatch(removeApplication(id));
+                }
+                alert("Application withdrawn successfully!");
+            } else {
+                alert(data.message || "Failed to withdraw application.");
+            }
+        } catch (err) {
+            console.error("Unapply error:", err);
+            alert("Error withdrawing application.");
+        } finally {
+            setIsUnapplying(false);
+        }
+    };
+
     const handleImageChange = (e) => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
@@ -196,7 +237,7 @@ function JobPage(){
         reader.onloadend = async () => {
             const base64Image = reader.result;
             try {
-                const res = await fetch(`http://localhost:5000/job/${id}`, {
+                const res = await fetch(`${API_BASE_URL}/job/${id}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ jobImage: base64Image, recruiterId: user._id })
@@ -264,7 +305,7 @@ function JobPage(){
         reader.onloadend = async () => {
             const base64Data = reader.result;
             try {
-                const res = await fetch("http://localhost:5000/job/accept-applicant", {
+                const res = await fetch(`${API_BASE_URL}/job/accept-applicant`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -320,7 +361,7 @@ function JobPage(){
 
         setUnacceptingId(applicant._id);
         try {
-            const res = await fetch("http://localhost:5000/job/unaccept-applicant", {
+            const res = await fetch(`${API_BASE_URL}/job/unaccept-applicant`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -377,7 +418,7 @@ function JobPage(){
                         isAcceptedForThisJob ? (
                             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "15px", marginTop: "15px" }}>
                                 <a
-                                    href={`http://localhost:5000/applicants/${user._id}/acceptance-proof-file?jobId=${id}`}
+                                    href={`${API_BASE_URL}/applicants/${user._id}/acceptance-proof-file?jobId=${id}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     title="Click to view Placement Cell's Proof of Acceptance"
@@ -401,7 +442,7 @@ function JobPage(){
                                                 ✓ Offer Letter Uploaded ({currentApplication.offerLetterName || "Offer Letter"})
                                             </span>
                                             <a
-                                                href={`http://localhost:5000/applicants/${user._id}/offer-letter-file?jobId=${id}`}
+                                                href={`${API_BASE_URL}/applicants/${user._id}/offer-letter-file?jobId=${id}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="Button"
@@ -474,9 +515,22 @@ function JobPage(){
                                 </div>
                             </div>
                         ) : (
-                            <button className="Button" onClick={handleApply} disabled={alreadyApplied || isApplying}>
-                                {alreadyApplied ? "Applied" : isApplying ? "Applying..." : "Apply now!"}
-                            </button>
+                            <div style={{ display: "flex", alignItems: "center", gap: "15px", flexWrap: "wrap" }}>
+                                <button className="Button" onClick={handleApply} disabled={alreadyApplied || isApplying || isUnapplying}>
+                                    {alreadyApplied ? "Applied" : isApplying ? "Applying..." : "Apply now!"}
+                                </button>
+                                {alreadyApplied && (
+                                    <button
+                                        className="Button"
+                                        type="button"
+                                        onClick={handleUnapply}
+                                        disabled={isUnapplying}
+                                        style={{ backgroundColor: "#555" }}
+                                    >
+                                        {isUnapplying ? "Withdrawing..." : "Un-apply"}
+                                    </button>
+                                )}
+                            </div>
                         )
                     )}
                 </div>
@@ -615,7 +669,7 @@ function JobPage(){
                                                         return (
                                                             <div style={{ marginTop: "10px" }}>
                                                                 <a 
-                                                                    href={`http://localhost:5000/applicants/${applicant._id}/offer-letter-file?jobId=${id}`} 
+                                                                    href={`${API_BASE_URL}/applicants/${applicant._id}/offer-letter-file?jobId=${id}`} 
                                                                     target="_blank" 
                                                                     rel="noopener noreferrer" 
                                                                     style={{ 
@@ -649,7 +703,7 @@ function JobPage(){
                                             {isAccepted ? (
                                                 <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                                                     <a 
-                                                        href={`http://localhost:5000/applicants/${applicant._id}/acceptance-proof-file?jobId=${id}`}
+                                                        href={`${API_BASE_URL}/applicants/${applicant._id}/acceptance-proof-file?jobId=${id}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         title="Click to view Placement Cell Proof of Acceptance"

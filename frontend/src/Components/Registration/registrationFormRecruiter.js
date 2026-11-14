@@ -1,6 +1,8 @@
 import {useState} from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function RegistrationFormRecruiter(){
     const navigate = useNavigate();
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,7 +46,7 @@ function RegistrationFormRecruiter(){
         setIsSubmitting(true);
 
         try {
-            const res = await fetch("http://localhost:5000/recruiters/register", {
+            const res = await fetch(`${API_BASE_URL}/recruiters/register`, {
                 method:  "POST",
                 headers: {"Content-Type":"application/json"},
                 body:JSON.stringify({

@@ -3,6 +3,8 @@ import { useSelector } from "react-redux";
 import { Navigate } from "react-router-dom";
 import { useParams } from "react-router-dom";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function AltProfileDetails(){
     const user = useSelector((state)=>state.user.user);
     const {id} = useParams();
@@ -12,7 +14,7 @@ function AltProfileDetails(){
     useEffect(()=>{
         const fetchapplicant = async()=>{
             try{
-                const res = await fetch(`http://localhost:5000/applicants/${id}`);
+                const res = await fetch(`${API_BASE_URL}/applicants/${id}`);
                 const data = await res.json();
                 if(res.ok){
                     setApplicant(data.data);
@@ -83,7 +85,7 @@ function AltProfileDetails(){
                                 <strong>{application.title}</strong>
                                 {isAccepted && (
                                     <a 
-                                        href={`http://localhost:5000/applicants/${applicant._id}/acceptance-proof-file?jobId=${application.id || application.jobId}`}
+                                        href={`${API_BASE_URL}/applicants/${applicant._id}/acceptance-proof-file?jobId=${application.id || application.jobId}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         title="Click to view Placement Cell Proof of Acceptance"
@@ -105,7 +107,7 @@ function AltProfileDetails(){
                                 {application.hasOfferLetter && (
                                     <div style={{ marginTop: "8px" }}>
                                         <a 
-                                            href={`http://localhost:5000/applicants/${applicant._id}/offer-letter-file?jobId=${application.id || application.jobId}`} 
+                                            href={`${API_BASE_URL}/applicants/${applicant._id}/offer-letter-file?jobId=${application.id || application.jobId}`} 
                                             target="_blank" 
                                             rel="noopener noreferrer" 
                                             style={{ 

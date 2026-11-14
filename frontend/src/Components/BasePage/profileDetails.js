@@ -3,6 +3,8 @@ import { useSelector, useDispatch } from "react-redux";
 import { Navigate } from "react-router-dom";
 import { setUser } from "../../redux/userSlice";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function ProfileDetails(){
     const dispatch = useDispatch();
     const user = useSelector((state)=>state.user.user);
@@ -35,12 +37,47 @@ function ProfileDetails(){
     const [newProjectDesc, setNewProjectDesc] = useState("");
 
     const [uploadingJobId, setUploadingJobId] = useState(null);
+    const [unapplyingJobId, setUnapplyingJobId] = useState(null);
 
     if(!user) return <Navigate to="/" replace />   
 
+    const handleUnapplyFromProfile = async (application) => {
+        const jobId = application.id || application.jobId;
+        if (!jobId) return;
+        if (!window.confirm(`Are you sure you want to withdraw your application for ${application.title || "this job"}?`)) {
+            return;
+        }
+
+        setUnapplyingJobId(jobId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/unapply`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: user._id,
+                    applicantId: user._id,
+                    jobId: jobId,
+                    title: application.title
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.user) {
+                dispatch(setUser({ ...data.user, type: user.type || "applicants" }));
+                alert("Application withdrawn successfully!");
+            } else {
+                alert(data.message || "Failed to withdraw application.");
+            }
+        } catch (err) {
+            console.error("Error withdrawing application:", err);
+            alert("Failed to connect to server!");
+        } finally {
+            setUnapplyingJobId(null);
+        }
+    };
+
     const updateProfile = async (updatedData) => {
         try {
-            const res = await fetch(`http://localhost:5000/applicants/${user._id}`, {
+            const res = await fetch(`${API_BASE_URL}/applicants/${user._id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(updatedData),
@@ -138,7 +175,7 @@ function ProfileDetails(){
         reader.onloadend = async () => {
             const base64Content = reader.result;
             try {
-                const res = await fetch(`http://localhost:5000/applicants/${user._id}/offer-letter`, {
+                const res = await fetch(`${API_BASE_URL}/applicants/${user._id}/offer-letter`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -261,9 +298,29 @@ function ProfileDetails(){
                         return (
                             <li key={jobId || idx} style={{ margin: "20px 0" }}> 
                                 <span style={{ fontWeight: "bold", fontSize: "36px" }}>{application.title}</span>
+                                {!isAccepted && (
+                                    <button
+                                        className="Button"
+                                        type="button"
+                                        onClick={() => handleUnapplyFromProfile(application)}
+                                        disabled={unapplyingJobId === jobId}
+                                        style={{
+                                            fontSize: "24px",
+                                            padding: "4px 16px",
+                                            height: "auto",
+                                            width: "auto",
+                                            minWidth: "120px",
+                                            marginLeft: "14px",
+                                            backgroundColor: "#555",
+                                            display: "inline-block"
+                                        }}
+                                    >
+                                        {unapplyingJobId === jobId ? "Withdrawing..." : "Un-apply"}
+                                    </button>
+                                )}
                                 {isAccepted && (
                                     <a 
-                                        href={`http://localhost:5000/applicants/${user._id}/acceptance-proof-file?jobId=${jobId}`}
+                                        href={`${API_BASE_URL}/applicants/${user._id}/acceptance-proof-file?jobId=${jobId}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         title="Click to view Placement Cell Proof of Acceptance"
@@ -298,7 +355,7 @@ function ProfileDetails(){
                                                     ✓ Offer Letter Uploaded ({application.offerLetterName || "Offer Letter"})
                                                 </span>
                                                 <a 
-                                                    href={`http://localhost:5000/applicants/${user._id}/offer-letter-file?jobId=${jobId}`} 
+                                                    href={`${API_BASE_URL}/applicants/${user._id}/offer-letter-file?jobId=${jobId}`} 
                                                     target="_blank" 
                                                     rel="noopener noreferrer" 
                                                     style={{ 

@@ -3,6 +3,8 @@ import { useSelector, useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { clearUser } from "../../redux/userSlice";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function RecruiterDetails(){
     const dispatch = useDispatch();
     const user = useSelector((state)=>state.user.user);
@@ -20,7 +22,7 @@ function RecruiterDetails(){
                 return;
             }
             try {
-                const res = await fetch(`http://localhost:5000/job/recruiter/${user._id}`);
+                const res = await fetch(`${API_BASE_URL}/job/recruiter/${user._id}`);
                 const data = await res.json();
                 if (res.ok && data.data && data.data.length > 0) {
                     setPostedJobs(data.data);
@@ -46,7 +48,7 @@ function RecruiterDetails(){
         }
 
         try {
-            const res = await fetch(`http://localhost:5000/job/${jobId}`, {
+            const res = await fetch(`${API_BASE_URL}/job/${jobId}`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ recruiterId: user?._id }),
@@ -77,7 +79,7 @@ function RecruiterDetails(){
         }
 
         try {
-            const res = await fetch(`http://localhost:5000/recruiters/${user._id}`, {
+            const res = await fetch(`${API_BASE_URL}/recruiters/${user._id}`, {
                 method: "DELETE",
             });
 

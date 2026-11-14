@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { setUser } from '../../redux/userSlice';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function LoginForm(){
     const dispatch = useDispatch();
     const navigate = useNavigate();
@@ -27,7 +29,7 @@ function LoginForm(){
             return alert("Please enter your password.");
         }
 
-        const res = await fetch(`http://localhost:5000/${usertype}/login`, {
+        const res = await fetch(`${API_BASE_URL}/${usertype}/login`, {
             method:  "POST",
             headers: {"Content-Type":"application/json"},
             body:JSON.stringify({
@@ -56,7 +58,7 @@ function LoginForm(){
 
         setIsSendingReset(true);
         try {
-            const res = await fetch("http://localhost:5000/forgot-password", {
+            const res = await fetch(`${API_BASE_URL}/forgot-password`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() })

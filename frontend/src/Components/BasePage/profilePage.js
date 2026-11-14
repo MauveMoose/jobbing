@@ -9,6 +9,8 @@ import { useSelector, useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { clearUser, setUser } from "../../redux/userSlice";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function ProfilePage(){
     const dispatch = useDispatch();
     const navigate = useNavigate();
@@ -23,7 +25,7 @@ function ProfilePage(){
 
     useEffect(() => {
         if (user?._id && user.type !== "recruiters" && !user.company && !user.positions) {
-            fetch(`http://localhost:5000/applicants/${user._id}`)
+            fetch(`${API_BASE_URL}/applicants/${user._id}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data && data.data) {
@@ -42,7 +44,7 @@ function ProfilePage(){
         }
 
         try {
-            const res = await fetch(`http://localhost:5000/applicants/${user._id}`, {
+            const res = await fetch(`${API_BASE_URL}/applicants/${user._id}`, {
                 method: "DELETE",
             });
 
@@ -71,7 +73,7 @@ function ProfilePage(){
         reader.onloadend = async () => {
             const base64Image = reader.result;
             try {
-                const res = await fetch(`http://localhost:5000/applicants/${user._id}`, {
+                const res = await fetch(`${API_BASE_URL}/applicants/${user._id}`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ profilePic: base64Image })

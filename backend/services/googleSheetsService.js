@@ -8,11 +8,20 @@ dotenv.config();
 let sheetsClient = null;
 
 function getCredentialsPath() {
-    const backendDir = process.cwd();
-    const files = fs.readdirSync(backendDir);
-    const keyFile = files.find(f => f.startsWith('jobbing-') && f.endsWith('.json'));
-    if (keyFile) {
-        return path.join(backendDir, keyFile);
+    const searchDirs = [process.cwd(), '/etc/secrets'];
+    for (const dir of searchDirs) {
+        try {
+            if (!fs.existsSync(dir)) continue;
+            const files = fs.readdirSync(dir);
+            const keyFile = files.find(
+                f => (f.startsWith('jobbing-') && f.endsWith('.json')) || f === 'google-credentials.json'
+            );
+            if (keyFile) {
+                return path.join(dir, keyFile);
+            }
+        } catch (_) {
+            // Ignore unreadable directories
+        }
     }
     return null;
 }
@@ -20,16 +29,27 @@ function getCredentialsPath() {
 async function getSheetsClient() {
     if (sheetsClient) return sheetsClient;
 
-    const keyPath = getCredentialsPath();
-    if (!keyPath) {
-        console.warn("[GoogleSheets] No credentials JSON key file found starting with jobbing-*.json");
-        return null;
+    let authConfig = {
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    };
+
+    if (process.env.GOOGLE_CREDENTIALS_JSON) {
+        try {
+            authConfig.credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+        } catch (err) {
+            console.error("[GoogleSheets] Failed to parse GOOGLE_CREDENTIALS_JSON env var:", err.message);
+            return null;
+        }
+    } else {
+        const keyPath = getCredentialsPath();
+        if (!keyPath) {
+            console.warn("[GoogleSheets] No credentials JSON key file found (jobbing-*.json or google-credentials.json)");
+            return null;
+        }
+        authConfig.keyFile = keyPath;
     }
 
-    const auth = new google.auth.GoogleAuth({
-        keyFile: keyPath,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+    const auth = new google.auth.GoogleAuth(authConfig);
 
     const client = await auth.getClient();
     sheetsClient = google.sheets({ version: 'v4', auth: client });
@@ -432,5 +452,78 @@ export async function deleteRegisteredApplicantFromSheet(applicantEmail) {
         }
     } catch (err) {
         console.error("[GoogleSheets] Error deleting applicant rows:", err.message);
+    }
+}
+
+/**
+ * Deletes a single job application row from the Applications Sheet when a candidate un-applies.
+ */
+export async function deleteApplicationFromSheet({ applicantEmail, jobTitle }) {
+    if (!applicantEmail || !jobTitle) return;
+    const cleanEmail = applicantEmail.trim().toLowerCase();
+    const cleanJob = jobTitle.trim().toLowerCase();
+
+    try {
+        const sheets = await getSheetsClient();
+        const spreadsheetId = extractSheetId(process.env.GOOGLE_SHEET_ID);
+        if (!sheets || !spreadsheetId) return;
+
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        const sheetObj = meta.data.sheets.find(s => s.properties.title === 'Sheet1') || meta.data.sheets[0];
+        const sheetId = sheetObj.properties.sheetId;
+
+        const res = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: 'Sheet1!A:P',
+        });
+
+        const rows = res.data.values || [];
+        const rowIndicesToDelete = [];
+
+        // 1. Exact match on Applicant Email (Col C = index 2) and Job Title (Col M = index 12)
+        for (let i = rows.length - 1; i >= 1; i--) {
+            const rowEmail = (rows[i][2] || "").trim().toLowerCase();
+            const rowJob = (rows[i][12] || "").trim().toLowerCase();
+            if (rowEmail === cleanEmail && rowJob === cleanJob) {
+                rowIndicesToDelete.push(i);
+            }
+        }
+
+        // 2. Fallback: partial job title match if exact match wasn't found
+        if (rowIndicesToDelete.length === 0) {
+            for (let i = rows.length - 1; i >= 1; i--) {
+                const rowEmail = (rows[i][2] || "").trim().toLowerCase();
+                const rowJob = (rows[i][12] || "").trim().toLowerCase();
+                if (rowEmail === cleanEmail && rowJob && cleanJob && (rowJob.includes(cleanJob) || cleanJob.includes(rowJob))) {
+                    rowIndicesToDelete.push(i);
+                    break;
+                }
+            }
+        }
+
+        if (rowIndicesToDelete.length === 0) {
+            console.warn(`[GoogleSheets] No application row found to delete for ${applicantEmail} - ${jobTitle}`);
+            return;
+        }
+
+        const requests = rowIndicesToDelete.map(rowIndex => ({
+            deleteDimension: {
+                range: {
+                    sheetId,
+                    dimension: 'ROWS',
+                    startIndex: rowIndex,
+                    endIndex: rowIndex + 1
+                }
+            }
+        }));
+
+        await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: { requests }
+        });
+
+        console.log(`[GoogleSheets] Deleted ${rowIndicesToDelete.length} application row(s) for ${applicantEmail} (${jobTitle})`);
+    } catch (err) {
+        console.error("[GoogleSheets] Error deleting application row on un-apply:", err.message);
     }
 }

@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+**/node_modules/
+/.pnp
+.pnp.js
+
+# Build outputs
+build/
+**/build/
+coverage/
+
+# Environment variables
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Google Cloud Service Account Credentials
+jobbing-*.json
+**/jobbing-*.json
+google-credentials.json
+**/google-credentials.json
+*.json.key
+
+# Temporary uploads
+backend/uploads/
+uploads/
+
+# Logs & OS files
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

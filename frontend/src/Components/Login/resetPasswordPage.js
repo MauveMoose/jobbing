@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import FormHeader from "../Navbar/formHeader";
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 function ResetPasswordPage() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -30,7 +32,7 @@ function ResetPasswordPage() {
         setIsSubmitting(true);
 
         try {
-            const res = await fetch("http://localhost:5000/reset-password", {
+            const res = await fetch(`${API_BASE_URL}/reset-password`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
